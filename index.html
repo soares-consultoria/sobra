@@ -472,6 +472,7 @@ nav.bottom button svg{width:22px; height:22px}
       <div class="f"><label>Guardar por mês (R$, opcional)</label><input id="boxMonthly" type="text" inputmode="decimal" placeholder="Ex.: 500,00"></div>
       <div class="f"><label>Início do plano (mês/ano)</label><input id="boxStart" type="month"></div>
     </div>
+    <div class="f" id="boxInitialWrap"><label>💼 Já tenho guardado (R$, opcional)</label><input id="boxInitial" type="text" inputmode="decimal" placeholder="Recurso que já existe — não desconta da sobra do mês"></div>
     <div class="actions">
       <button class="danger" id="boxDel" style="display:none">Excluir</button>
       <button class="ghost" id="boxCancel">Cancelar</button>
@@ -486,6 +487,7 @@ nav.bottom button svg{width:22px; height:22px}
     <h3 id="movTitle">Guardar na caixinha</h3>
     <div class="f" id="movBoxPickWrap"><label>Caixinha</label><select id="movBoxPick"></select></div>
     <div class="f"><label>Valor (R$)</label><input id="movAmt" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <div class="f" id="movExtWrap"><label><input type="checkbox" id="movExternal" style="width:auto;margin-right:6px">💼 Recurso já existente (não desconta da sobra deste mês)</label></div>
     <div class="hint" id="movHint" style="margin:0 0 4px"></div>
     <div class="actions">
       <button class="ghost" id="movCancel">Cancelar</button>
@@ -675,7 +677,7 @@ function forecast(){
   const nowM = todayISO().slice(0,7);
   const y=+state.view.slice(0,4), mo=+state.view.slice(5,7);
   const daysInMonth = new Date(y,mo,0).getDate();
-  const savedNet = state.boxmov.filter(m=>mkey(m.date)===state.view).reduce((s,m)=>s+m.amount,0);
+  const savedNet = state.boxmov.filter(m=>mkey(m.date)===state.view && !m.external).reduce((s,m)=>s+m.amount,0);
   if(state.view!==nowM){
     // past or future month: just committed + pending
     return {val: bal + pInc - pOut - savedNet, varProj:0, savedNet, planned:0, isCurrent:false};
@@ -692,7 +694,7 @@ function forecast(){
 const BOX_ICONS=[[/f[ée]rias/,'🏖️'],[/viagem/,'✈️'],[/lua de mel|casamento|noivad/,'💍'],[/emerg[êe]ncia|reserva/,'🚨'],[/aposentadoria|futuro/,'🌴'],[/casa|apart|im[óo]vel/,'🏠'],[/carro|moto|ve[íi]culo/,'🚗'],[/estudo|faculdade|curso|educa/,'📚'],[/filh|beb[êe]/,'🍼'],[/presente|natal/,'🎁']];
 function boxIcon(name){ const n=(name||'').toLowerCase(); for(const p of BOX_ICONS){ if(p[0].test(n)) return p[1]; } return '🐷'; }
 function boxBalance(id){ return state.boxmov.filter(m=>m.boxId===id).reduce((s,m)=>s+m.amount,0); }
-function contribThisMonth(id){ const m=todayISO().slice(0,7); return state.boxmov.filter(x=>x.boxId===id && x.amount>0 && mkey(x.date)===m).reduce((s,x)=>s+x.amount,0); }
+function contribThisMonth(id){ const m=todayISO().slice(0,7); return state.boxmov.filter(x=>x.boxId===id && x.amount>0 && !x.external && mkey(x.date)===m).reduce((s,x)=>s+x.amount,0); }
 function planRemaining(b){
   if(!(b.monthly>0)) return 0;
   if(b.planStart && todayISO().slice(0,7) < b.planStart) return 0; // plano ainda não começou
@@ -705,7 +707,7 @@ function lastMonthLeftover(){
   const pm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
   const tx=state.tx.filter(t=>mkey(t.date)===pm && !t.pending);
   const bal=tx.reduce((s,t)=>s+(t.type==='receita'?t.amount:-t.amount),0);
-  const saved=state.boxmov.filter(m=>mkey(m.date)===pm).reduce((s,m)=>s+m.amount,0);
+  const saved=state.boxmov.filter(m=>mkey(m.date)===pm && !m.external).reduce((s,m)=>s+m.amount,0);
   return {month:pm, value:bal-saved};
 }
 
@@ -910,12 +912,14 @@ let boxEditing=null, movBoxId=null, movDir=1;
 $('#addBoxBtn').onclick=()=>{ boxEditing=null; $('#boxSheetTitle').textContent='Nova caixinha';
   $('#boxName').value=''; $('#boxTarget').value=''; $('#boxMonthly').value='';
   $('#boxStart').value=todayISO().slice(0,7);
+  $('#boxInitial').value=''; $('#boxInitialWrap').style.display='';
   $('#boxDel').style.display='none'; $('#boxOverlay').classList.add('show'); };
 function openBoxEdit(id){ const b=state.boxes.find(x=>x.id===id); if(!b) return;
   boxEditing=id; $('#boxSheetTitle').textContent='Editar caixinha';
   $('#boxName').value=b.name; $('#boxTarget').value=b.target?b.target.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
   $('#boxMonthly').value=b.monthly?b.monthly.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
   $('#boxStart').value=b.planStart || todayISO().slice(0,7);
+  $('#boxInitialWrap').style.display='none';
   $('#boxDel').style.display=''; $('#boxOverlay').classList.add('show'); }
 $('#boxCancel').onclick=()=>$('#boxOverlay').classList.remove('show');
 $('#boxSave').onclick=()=>{
@@ -924,7 +928,15 @@ $('#boxSave').onclick=()=>{
   const monthly=$('#boxMonthly').value.trim()? parseMoney($('#boxMonthly').value) : null;
   const planStart = monthly && /^\d{4}-\d{2}$/.test($('#boxStart').value) ? $('#boxStart').value : null;
   if(boxEditing){ const b=state.boxes.find(x=>x.id===boxEditing); b.name=name; b.target=target; b.monthly=monthly; b.planStart=planStart; }
-  else state.boxes.push({id:uid(), name, target, monthly, planStart});
+  else {
+    const nb={id:uid(), name, target, monthly, planStart};
+    state.boxes.push(nb);
+    const initial=$('#boxInitial').value.trim()? parseMoney($('#boxInitial').value) : null;
+    if(initial && initial>0){
+      state.boxmov.push({id:uid(), boxId:nb.id, amount:initial, date:todayISO(), external:true});
+      toast(fmt(initial)+' registrados como recurso já existente ✓');
+    }
+  }
   save(); $('#boxOverlay').classList.remove('show'); render();
 };
 $('#boxDel').onclick=()=>{ if(confirm('Excluir esta caixinha? O histórico de guardado/resgatado dela também será removido.')){
@@ -936,6 +948,8 @@ function openMov(boxId, preset, dir){
   movBoxId=boxId; movDir=dir;
   $('#movTitle').textContent = dir>0? 'Guardar na caixinha' : 'Resgatar da caixinha';
   $('#movHint').textContent = dir>0? 'O valor sai da sobra livre do mês e fica guardado com propósito.' : 'O valor volta para a sobra livre do mês.';
+  $('#movExtWrap').style.display = dir>0? '' : 'none';
+  $('#movExternal').checked=false;
   const wrap=$('#movBoxPickWrap');
   if(boxId){ wrap.style.display='none'; }
   else {
@@ -952,10 +966,13 @@ $('#movSave').onclick=()=>{
   if(amt===null||amt<=0){ toast('Informe um valor válido'); return; }
   const id=movBoxId || $('#movBoxPick').value;
   if(movDir<0 && amt>boxBalance(id)+0.009){ toast('A caixinha não tem esse valor guardado'); return; }
-  state.boxmov.push({id:uid(), boxId:id, amount:movDir*amt, date:todayISO()});
+  const ext = movDir>0 && $('#movExternal').checked;
+  const mov={id:uid(), boxId:id, amount:movDir*amt, date:todayISO()};
+  if(ext) mov.external=true;
+  state.boxmov.push(mov);
   save(); $('#movOverlay').classList.remove('show'); render();
   const b=state.boxes.find(x=>x.id===id);
-  toast(movDir>0? fmt(amt)+' guardados em '+(b?b.name:'caixinha')+' ✓' : fmt(amt)+' resgatados ✓');
+  toast(movDir>0? fmt(amt)+(ext?' adicionados como recurso já existente em ':' guardados em ')+(b?b.name:'caixinha')+' ✓' : fmt(amt)+' resgatados ✓');
 };
 
 function esc(s){ return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
