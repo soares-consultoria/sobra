@@ -463,6 +463,7 @@ nav.bottom button svg{width:22px; height:22px}
     <h3 id="boxSheetTitle">Nova caixinha</h3>
     <div class="f"><label>Nome</label><input id="boxName" type="text" placeholder="Ex.: Férias, Lua de mel, Reserva de emergência"></div>
     <div class="f"><label>Meta (R$, opcional)</label><input id="boxTarget" type="text" inputmode="decimal" placeholder="Ex.: 10.000,00"></div>
+    <div class="f"><label>Guardar por mês (R$, opcional)</label><input id="boxMonthly" type="text" inputmode="decimal" placeholder="Ex.: 500,00"></div>
     <div class="actions">
       <button class="danger" id="boxDel" style="display:none">Excluir</button>
       <button class="ghost" id="boxCancel">Cancelar</button>
@@ -669,19 +670,22 @@ function forecast(){
   const savedNet = state.boxmov.filter(m=>mkey(m.date)===state.view).reduce((s,m)=>s+m.amount,0);
   if(state.view!==nowM){
     // past or future month: just committed + pending
-    return {val: bal + pInc - pOut - savedNet, varProj:0, savedNet, isCurrent:false};
+    return {val: bal + pInc - pOut - savedNet, varProj:0, savedNet, planned:0, isCurrent:false};
   }
   const today = new Date().getDate();
   // variable spend = paid expenses NOT from recurring
   const varSpent = monthTx().filter(t=>t.type==='despesa'&&!t.pending&&!t.recId).reduce((s,t)=>s+t.amount,0);
   const daily = today>0 ? varSpent/today : 0;
   const varProj = daily * (daysInMonth-today);
-  return {val: bal + pInc - pOut - varProj - savedNet, varProj, savedNet, isCurrent:true};
+  const planned = state.boxes.reduce((s,b)=>s+planRemaining(b),0);
+  return {val: bal + pInc - pOut - varProj - savedNet - planned, varProj, savedNet, planned, isCurrent:true};
 }
 /* caixinhas helpers */
 const BOX_ICONS=[[/f[ée]rias/,'🏖️'],[/viagem/,'✈️'],[/lua de mel|casamento|noivad/,'💍'],[/emerg[êe]ncia|reserva/,'🚨'],[/aposentadoria|futuro/,'🌴'],[/casa|apart|im[óo]vel/,'🏠'],[/carro|moto|ve[íi]culo/,'🚗'],[/estudo|faculdade|curso|educa/,'📚'],[/filh|beb[êe]/,'🍼'],[/presente|natal/,'🎁']];
 function boxIcon(name){ const n=(name||'').toLowerCase(); for(const p of BOX_ICONS){ if(p[0].test(n)) return p[1]; } return '🐷'; }
 function boxBalance(id){ return state.boxmov.filter(m=>m.boxId===id).reduce((s,m)=>s+m.amount,0); }
+function contribThisMonth(id){ const m=todayISO().slice(0,7); return state.boxmov.filter(x=>x.boxId===id && x.amount>0 && mkey(x.date)===m).reduce((s,x)=>s+x.amount,0); }
+function planRemaining(b){ return b.monthly>0 ? Math.max(0, b.monthly - contribThisMonth(b.id)) : 0; }
 function totalSaved(){ return state.boxes.reduce((s,b)=>s+boxBalance(b.id),0); }
 function lastMonthLeftover(){
   const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
@@ -717,6 +721,7 @@ function renderHome(){
   if(pOut>0) parts.push(fmt0(pOut)+' a pagar');
   if(f.isCurrent && f.varProj>0) parts.push('~'+fmt0(f.varProj)+' de gastos do dia a dia até o fim do mês');
   if(f.savedNet>0) parts.push(fmt0(f.savedNet)+' guardados em caixinhas');
+  if(f.planned>0) parts.push(fmt0(f.planned)+' a guardar (plano mensal das caixinhas)');
   $('#heroSub').textContent = parts.length? 'Considera: '+parts.join(' · ') : (f.isCurrent?'Baseado no que você já lançou este mês.':'');
 
   // caixinhas na home
@@ -726,16 +731,24 @@ function renderHome(){
       state.boxes.map(b=>`<button class="chip" data-gobox="1">${boxIcon(b.name)} ${esc(b.name)} · <b>${fmt0(boxBalance(b.id))}</b></button>`).join('')+'</div>';
   } else hb.innerHTML='';
 
-  // pending strip (next 5 by date)
+  // pending strip (next 5 by date) + planos mensais das caixinhas
   const pend = monthTx().filter(t=>t.pending).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5);
+  const isCurrentM = state.view===todayISO().slice(0,7);
+  const plans = isCurrentM ? state.boxes.map(b=>({b, falta:planRemaining(b)})).filter(p=>p.falta>0.009) : [];
   const pw=$('#pendWrap');
-  if(pend.length){
-    pw.innerHTML = '<h2 class="sec">A pagar / a receber</h2><div class="pendstrip">'+pend.map(t=>`
+  if(pend.length || plans.length){
+    pw.innerHTML = '<h2 class="sec">A pagar / a receber / a guardar</h2><div class="pendstrip">'+pend.map(t=>`
       <div class="pend">
         <div class="cdot" style="font-size:18px">${CAT_ICON[t.category]||'📦'}</div>
         <div class="info"><div class="d">${esc(t.desc)}</div><div class="m">dia ${+t.date.slice(8,10)} · ${t.category}</div></div>
         <div class="amt ${t.type==='receita'?'pos':'neg'}">${t.type==='receita'?'+':'−'}${fmt0(t.amount)}</div>
         <button class="ok" data-confirm="${t.id}">✓</button>
+      </div>`).join('')+plans.map(p=>`
+      <div class="pend">
+        <div class="cdot" style="font-size:18px">${boxIcon(p.b.name)}</div>
+        <div class="info"><div class="d">Guardar em ${esc(p.b.name)}</div><div class="m">plano mensal de ${fmt0(p.b.monthly)} · falta ${fmt0(p.falta)}</div></div>
+        <div class="amt">${fmt0(p.falta)}</div>
+        <button class="ok" data-boxplanok="${p.b.id}">✓</button>
       </div>`).join('')+'</div>';
   } else pw.innerHTML='';
 
@@ -836,6 +849,19 @@ function renderBoxes(){
     el.innerHTML = state.boxes.map(b=>{
       const bal=boxBalance(b.id);
       const pct = b.target ? Math.min(100, bal/b.target*100) : 0;
+      let plano='';
+      if(b.monthly>0){
+        let proj='';
+        if(b.target && bal<b.target){
+          const meses=Math.ceil((b.target-bal)/b.monthly);
+          const d=new Date(); d.setMonth(d.getMonth()+meses);
+          proj=' · no ritmo, meta em ~'+meses+' '+(meses===1?'mês':'meses')+' ('+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear()+')';
+        }
+        const falta=planRemaining(b);
+        plano=`<div class="meta">Plano: guardar ${fmt0(b.monthly)}/mês${proj}</div>`+
+          (falta>0.009?`<button style="width:100%; margin-top:8px; border:1.5px solid var(--accent); color:var(--accent); border-radius:10px; padding:9px; font-weight:600; font-size:13px" data-boxplan="${b.id}">Guardar ${fmt0(falta)} deste mês</button>`
+                      :`<div class="meta" style="color:var(--good-text)">✓ Plano do mês concluído</div>`);
+      }
       return `<div class="box">
         <div class="hd" data-boxedit="${b.id}" style="cursor:pointer">
           <span class="ic">${boxIcon(b.name)}</span>
@@ -843,6 +869,7 @@ function renderBoxes(){
           <span class="bal">${fmt(bal)}</span>
         </div>
         ${b.target?`<div class="meta">Meta: ${fmt0(b.target)} · ${Math.round(pct)}% ${pct>=100?'— meta batida! 🎉':''}</div><div class="bar"><i style="width:${Math.max(2,pct)}%"></i></div>`:''}
+        ${plano}
         <div class="acts">
           <button class="g" data-boxg="${b.id}">+ Guardar</button>
           <button data-boxr="${b.id}">Resgatar</button>
@@ -863,17 +890,19 @@ function renderBoxes(){
 /* modais de caixinha */
 let boxEditing=null, movBoxId=null, movDir=1;
 $('#addBoxBtn').onclick=()=>{ boxEditing=null; $('#boxSheetTitle').textContent='Nova caixinha';
-  $('#boxName').value=''; $('#boxTarget').value=''; $('#boxDel').style.display='none'; $('#boxOverlay').classList.add('show'); };
+  $('#boxName').value=''; $('#boxTarget').value=''; $('#boxMonthly').value=''; $('#boxDel').style.display='none'; $('#boxOverlay').classList.add('show'); };
 function openBoxEdit(id){ const b=state.boxes.find(x=>x.id===id); if(!b) return;
   boxEditing=id; $('#boxSheetTitle').textContent='Editar caixinha';
   $('#boxName').value=b.name; $('#boxTarget').value=b.target?b.target.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
+  $('#boxMonthly').value=b.monthly?b.monthly.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
   $('#boxDel').style.display=''; $('#boxOverlay').classList.add('show'); }
 $('#boxCancel').onclick=()=>$('#boxOverlay').classList.remove('show');
 $('#boxSave').onclick=()=>{
   const name=$('#boxName').value.trim(); if(!name){ toast('Dê um nome à caixinha'); return; }
   const target=$('#boxTarget').value.trim()? parseMoney($('#boxTarget').value) : null;
-  if(boxEditing){ const b=state.boxes.find(x=>x.id===boxEditing); b.name=name; b.target=target; }
-  else state.boxes.push({id:uid(), name, target});
+  const monthly=$('#boxMonthly').value.trim()? parseMoney($('#boxMonthly').value) : null;
+  if(boxEditing){ const b=state.boxes.find(x=>x.id===boxEditing); b.name=name; b.target=target; b.monthly=monthly; }
+  else state.boxes.push({id:uid(), name, target, monthly});
   save(); $('#boxOverlay').classList.remove('show'); render();
 };
 $('#boxDel').onclick=()=>{ if(confirm('Excluir esta caixinha? O histórico de guardado/resgatado dela também será removido.')){
@@ -970,6 +999,14 @@ document.addEventListener('click', e=>{
   if(bg){ openMov(bg.dataset.boxg, null, 1); return; }
   const br=e.target.closest('[data-boxr]');
   if(br){ openMov(br.dataset.boxr, null, -1); return; }
+  const bp=e.target.closest('[data-boxplan]');
+  if(bp){ const b=state.boxes.find(x=>x.id===bp.dataset.boxplan); if(b) openMov(b.id, planRemaining(b), 1); return; }
+  const bpo=e.target.closest('[data-boxplanok]');
+  if(bpo){ const b=state.boxes.find(x=>x.id===bpo.dataset.boxplanok);
+    if(b){ const falta=planRemaining(b);
+      if(falta>0.009){ state.boxmov.push({id:uid(), boxId:b.id, amount:falta, date:todayISO()});
+        save(); render(); toast(fmt(falta)+' guardados em '+b.name+' ✓'); } }
+    return; }
 });
 
 /* ============ tx modal ============ */
