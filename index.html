@@ -169,10 +169,25 @@ nav.bottom{
   position:fixed; bottom:0; left:50%; transform:translateX(-50%);
   width:100%; max-width:560px; background:var(--surface);
   border-top:1px solid var(--ring);
-  display:grid; grid-template-columns:repeat(5,1fr);
-  padding:6px 4px calc(6px + env(safe-area-inset-bottom));
+  display:grid; grid-template-columns:repeat(6,1fr);
+  padding:6px 2px calc(6px + env(safe-area-inset-bottom));
   z-index:50;
 }
+/* caixinhas */
+.box{background:var(--surface); border:1px solid var(--ring); border-radius:14px; padding:13px; margin-bottom:8px; box-shadow:var(--shadow)}
+.box .hd{display:flex; align-items:center; gap:10px}
+.box .hd .ic{font-size:22px}
+.box .hd .nm{flex:1; font-size:14.5px; font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.box .hd .bal{font-size:15px; font-weight:700; font-variant-numeric:tabular-nums}
+.box .meta{font-size:12px; color:var(--muted); margin-top:2px}
+.box .bar{height:8px; background:var(--surface2); border-radius:4px; overflow:hidden; margin-top:8px}
+.box .bar i{display:block; height:100%; border-radius:4px; background:var(--s3)}
+.box .acts{display:flex; gap:8px; margin-top:10px}
+.box .acts button{flex:1; border-radius:10px; padding:9px; font-size:13px; font-weight:600; background:var(--surface2); color:var(--ink2)}
+.box .acts button.g{background:var(--accent); color:#fff}
+.boxtotal{display:flex; justify-content:space-between; align-items:baseline; margin:2px 2px 10px}
+.boxtotal .t{font-size:13px; color:var(--ink2)}
+.boxtotal .v{font-size:17px; font-weight:700; color:var(--good-text)}
 nav.bottom button{
   display:flex; flex-direction:column; align-items:center; gap:3px;
   font-size:10.5px; color:var(--muted); padding:5px 0; border-radius:10px;
@@ -266,6 +281,7 @@ nav.bottom button svg{width:22px; height:22px}
     </div>
 
     <div id="pendWrap"></div>
+    <div id="homeBoxes"></div>
 
     <h2 class="sec" id="catTitle" style="display:none">Para onde foi o dinheiro</h2>
     <div class="card" id="catCard" style="display:none"><div class="cats" id="catBars"></div></div>
@@ -301,6 +317,19 @@ nav.bottom button svg{width:22px; height:22px}
     <button class="addbtn" id="addRecBtn">+ Nova recorrente</button>
   </section>
 
+  <!-- CAIXINHAS -->
+  <section class="view" id="v-box">
+    <div class="hint" style="margin-top:2px">Guarde as sobras com propósito: férias, viagem, reserva de emergência, aposentadoria… Você escolhe para qual caixinha o dinheiro vai.</div>
+    <div class="boxtotal" id="boxTotal" style="display:none"><span class="t">Total guardado</span><span class="v" id="boxTotalVal"></span></div>
+    <div id="boxSuggest" style="display:none" class="card">
+      <div style="font-size:14px; font-weight:600; margin-bottom:4px">💡 Sobra do mês passado</div>
+      <div class="hint" style="margin:0 0 10px" id="boxSuggestTxt"></div>
+      <button id="boxSuggestBtn" style="width:100%; background:var(--accent); color:#fff; border-radius:10px; padding:11px; font-weight:600; font-size:13.5px">Guardar em uma caixinha</button>
+    </div>
+    <div id="boxList"></div>
+    <button class="addbtn" id="addBoxBtn">+ Nova caixinha</button>
+  </section>
+
   <!-- AJUSTES -->
   <section class="view" id="v-set">
     <div class="card">
@@ -308,6 +337,7 @@ nav.bottom button svg{width:22px; height:22px}
       <div class="setrow"><div><div class="t">Exportar extrato (CSV)</div><div class="s">Abre no Excel / Google Planilhas</div></div><button class="act" id="expCsv">Exportar</button></div>
       <div class="setrow"><div><div class="t">Importar backup</div><div class="s">Restaura um arquivo JSON exportado</div></div><button class="act" id="impJson">Importar</button></div>
       <div class="setrow"><div><div class="t">Apagar tudo</div><div class="s">Remove todos os dados deste dispositivo</div></div><button class="act red" id="wipe">Apagar</button></div>
+      <div class="setrow" id="rowLogout" style="display:none"><div><div class="t">Sair da conta</div><div class="s" id="logoutMail"></div></div><button class="act" id="logoutBtn">Sair</button></div>
     </div>
     <div class="hint">Seus dados ficam <b>somente neste dispositivo</b> — nada é enviado para servidores. Faça backups de vez em quando. 💡 No celular, use “Adicionar à tela de início” para instalar como app.</div>
     <input type="file" id="impFile" accept="application/json" style="display:none">
@@ -319,6 +349,7 @@ nav.bottom button svg{width:22px; height:22px}
   <button data-v="extrato"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>Extrato</button>
   <button data-v="env"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7h18v13H3z"/><path d="M3 7l9 6 9-6"/></svg>Envelopes</button>
   <button data-v="rec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Recorrentes</button>
+  <button data-v="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M3 12h18"/><path d="M12 8V5a2 2 0 0 1 2-2h1"/><path d="M9 16h6"/></svg>Caixinhas</button>
   <button data-v="set"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>Ajustes</button>
 </nav>
 
@@ -380,8 +411,62 @@ nav.bottom button svg{width:22px; height:22px}
   </div>
 </div>
 
+<!-- Modal caixinha (criar/editar) -->
+<div class="overlay" id="boxOverlay">
+  <div class="sheet">
+    <h3 id="boxSheetTitle">Nova caixinha</h3>
+    <div class="f"><label>Nome</label><input id="boxName" type="text" placeholder="Ex.: Férias, Lua de mel, Reserva de emergência"></div>
+    <div class="f"><label>Meta (R$, opcional)</label><input id="boxTarget" type="text" inputmode="decimal" placeholder="Ex.: 10.000,00"></div>
+    <div class="actions">
+      <button class="danger" id="boxDel" style="display:none">Excluir</button>
+      <button class="ghost" id="boxCancel">Cancelar</button>
+      <button class="primary" id="boxSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal guardar/resgatar -->
+<div class="overlay" id="movOverlay">
+  <div class="sheet">
+    <h3 id="movTitle">Guardar na caixinha</h3>
+    <div class="f" id="movBoxPickWrap"><label>Caixinha</label><select id="movBoxPick"></select></div>
+    <div class="f"><label>Valor (R$)</label><input id="movAmt" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <div class="hint" id="movHint" style="margin:0 0 4px"></div>
+    <div class="actions">
+      <button class="ghost" id="movCancel">Cancelar</button>
+      <button class="primary" id="movSave">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tela de login (Supabase) -->
+<div id="authScreen" style="display:none; position:fixed; inset:0; z-index:90; background:var(--page); overflow-y:auto">
+  <div style="max-width:400px; margin:0 auto; padding:60px 24px">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px">
+      <svg viewBox="0 0 64 64" fill="none" style="width:40px;height:40px"><rect x="4" y="4" width="56" height="56" rx="16" fill="#2a78d6"/><path d="M20 40c0 4 4 7 12 7s12-3 12-8c0-11-22-6-22-16 0-4.5 4.5-7 10-7 5 0 9 2 10 6" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/></svg>
+      <span style="font-size:26px; font-weight:700">Sobra</span>
+    </div>
+    <p style="color:var(--ink2); font-size:14.5px; line-height:1.55; margin-bottom:24px">Seu orçamento em 3 segundos, agora com seus dados guardados com segurança na nuvem e sincronizados entre seus dispositivos.</p>
+    <div class="card">
+      <div id="authStep1">
+        <div class="f"><label>Seu e-mail</label><input id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="voce@exemplo.com"></div>
+        <button class="quickbtn" id="authSend" style="width:100%; background:var(--accent); color:#fff; border-radius:12px; padding:14px; font-weight:700; font-size:15px">Enviar link de acesso</button>
+        <div class="hint" style="margin-top:10px">Sem senha: você recebe um link por e-mail e toca nele para entrar. Na primeira vez, a conta é criada automaticamente.</div>
+      </div>
+      <div id="authStep2" style="display:none">
+        <div class="hint" style="margin:0 0 10px">Enviamos um e-mail para <b id="authSentTo"></b>. <b>Toque no link do e-mail</b> para entrar. Se o e-mail trouxer um código, você também pode digitá-lo abaixo:</div>
+        <div class="f"><label>Código do e-mail</label><input id="authCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="000000"></div>
+        <button id="authVerify" style="width:100%; background:var(--accent); color:#fff; border-radius:12px; padding:14px; font-weight:700; font-size:15px">Entrar</button>
+        <button id="authBack" style="width:100%; margin-top:8px; color:var(--ink2); padding:10px; font-size:13.5px">Usar outro e-mail</button>
+      </div>
+      <div id="authMsg" class="hint" style="margin-top:10px; display:none"></div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 'use strict';
 /* ============ helpers ============ */
@@ -460,11 +545,32 @@ function parseQuick(text){
   return {desc, amount, type, category, date};
 }
 
-/* ============ state ============ */
+/* ============ state & storage (Supabase Postgres + cache local) ============ */
 const LS='sobra.v1';
-let state = { tx:[], rec:[], budgets:{}, theme:null, view: todayISO().slice(0,7) };
-function load(){ try{ const s=JSON.parse(localStorage.getItem(LS)); if(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.theme=s.theme||null; } }catch(e){} }
-function save(){ localStorage.setItem(LS, JSON.stringify({tx:state.tx, rec:state.rec, budgets:state.budgets, theme:state.theme})); }
+const SUPA_URL='https://xhlnjtjpduzuzsiffeep.supabase.co';
+const SUPA_KEY='sb_publishable_XCO02ELxRKJtn9FSiSKz5A_1gU8CSjc';
+const CLOUD = SUPA_URL.indexOf('https')===0 && !!window.supabase;
+let sb=null, user=null, syncTimer=null, dirty=false;
+let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], theme:null, view: todayISO().slice(0,7) };
+function lsKey(){ return user ? LS+'.'+user.id : LS; }
+function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov}; }
+function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; }
+function load(){ try{ const s=JSON.parse(localStorage.getItem(lsKey())); if(s) adopt(s); }catch(e){} }
+function save(){
+  localStorage.setItem(lsKey(), JSON.stringify(snapshot()));
+  if(CLOUD && user){ dirty=true; clearTimeout(syncTimer); syncTimer=setTimeout(pushCloud, 600); }
+}
+async function pushCloud(){
+  if(!(CLOUD && user)) return;
+  try{
+    const {error} = await sb.from('app_state').upsert({ user_id:user.id,
+      data:snapshot(), updated_at:new Date().toISOString() });
+    if(error) throw error;
+    dirty=false;
+  }catch(e){ toast('⚠️ Sem conexão — salvo neste dispositivo, sincronizo depois'); }
+}
+window.addEventListener('online', ()=>{ if(dirty) pushCloud(); });
+window.addEventListener('beforeunload', ()=>{ if(dirty && sb && user){ /* melhor esforço */ pushCloud(); } });
 
 /* materialize recurring items into viewed month as "pending" */
 function materialize(){
@@ -498,16 +604,30 @@ function forecast(){
   const nowM = todayISO().slice(0,7);
   const y=+state.view.slice(0,4), mo=+state.view.slice(5,7);
   const daysInMonth = new Date(y,mo,0).getDate();
+  const savedNet = state.boxmov.filter(m=>mkey(m.date)===state.view).reduce((s,m)=>s+m.amount,0);
   if(state.view!==nowM){
     // past or future month: just committed + pending
-    return {val: bal + pInc - pOut, varProj:0, isCurrent:false};
+    return {val: bal + pInc - pOut - savedNet, varProj:0, savedNet, isCurrent:false};
   }
   const today = new Date().getDate();
   // variable spend = paid expenses NOT from recurring
   const varSpent = monthTx().filter(t=>t.type==='despesa'&&!t.pending&&!t.recId).reduce((s,t)=>s+t.amount,0);
   const daily = today>0 ? varSpent/today : 0;
   const varProj = daily * (daysInMonth-today);
-  return {val: bal + pInc - pOut - varProj, varProj, isCurrent:true};
+  return {val: bal + pInc - pOut - varProj - savedNet, varProj, savedNet, isCurrent:true};
+}
+/* caixinhas helpers */
+const BOX_ICONS=[[/f[ée]rias/,'🏖️'],[/viagem/,'✈️'],[/lua de mel|casamento|noivad/,'💍'],[/emerg[êe]ncia|reserva/,'🚨'],[/aposentadoria|futuro/,'🌴'],[/casa|apart|im[óo]vel/,'🏠'],[/carro|moto|ve[íi]culo/,'🚗'],[/estudo|faculdade|curso|educa/,'📚'],[/filh|beb[êe]/,'🍼'],[/presente|natal/,'🎁']];
+function boxIcon(name){ const n=(name||'').toLowerCase(); for(const p of BOX_ICONS){ if(p[0].test(n)) return p[1]; } return '🐷'; }
+function boxBalance(id){ return state.boxmov.filter(m=>m.boxId===id).reduce((s,m)=>s+m.amount,0); }
+function totalSaved(){ return state.boxes.reduce((s,b)=>s+boxBalance(b.id),0); }
+function lastMonthLeftover(){
+  const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
+  const pm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  const tx=state.tx.filter(t=>mkey(t.date)===pm && !t.pending);
+  const bal=tx.reduce((s,t)=>s+(t.type==='receita'?t.amount:-t.amount),0);
+  const saved=state.boxmov.filter(m=>mkey(m.date)===pm).reduce((s,m)=>s+m.amount,0);
+  return {month:pm, value:bal-saved};
 }
 
 /* ============ render ============ */
@@ -518,7 +638,7 @@ function fmtDay(iso){ const d=new Date(iso+'T12:00:00'); return d.toLocaleDateSt
 function render(){
   materialize();
   $('#monthLbl').textContent = monthLabel(state.view);
-  renderHome(); renderExtrato(); renderEnv(); renderRec();
+  renderHome(); renderExtrato(); renderEnv(); renderRec(); renderBoxes();
 }
 
 function renderHome(){
@@ -534,7 +654,15 @@ function renderHome(){
   if(pInc>0) parts.push(fmt0(pInc)+' a receber');
   if(pOut>0) parts.push(fmt0(pOut)+' a pagar');
   if(f.isCurrent && f.varProj>0) parts.push('~'+fmt0(f.varProj)+' de gastos do dia a dia até o fim do mês');
+  if(f.savedNet>0) parts.push(fmt0(f.savedNet)+' guardados em caixinhas');
   $('#heroSub').textContent = parts.length? 'Considera: '+parts.join(' · ') : (f.isCurrent?'Baseado no que você já lançou este mês.':'');
+
+  // caixinhas na home
+  const hb=$('#homeBoxes');
+  if(state.boxes.length){
+    hb.innerHTML = '<h2 class="sec">Caixinhas — '+fmt0(totalSaved())+' guardados</h2><div class="filters">'+
+      state.boxes.map(b=>`<button class="chip" data-gobox="1">${boxIcon(b.name)} ${esc(b.name)} · <b>${fmt0(boxBalance(b.id))}</b></button>`).join('')+'</div>';
+  } else hb.innerHTML='';
 
   // pending strip (next 5 by date)
   const pend = monthTx().filter(t=>t.pending).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5);
@@ -634,6 +762,89 @@ function renderRec(){
   $('#recExpenses').innerHTML = exp.length? exp.map(item).join('') : '<div class="hint">Nenhuma. Ex.: aluguel, internet, streaming.</div>';
 }
 
+function renderBoxes(){
+  const el=$('#boxList');
+  const tot=$('#boxTotal');
+  if(!state.boxes.length){
+    tot.style.display='none';
+    el.innerHTML='<div class="empty"><div class="big">🐷</div><p>Nenhuma caixinha ainda.<br>Crie uma para <b>Férias</b>, <b>Reserva de emergência</b>,<br><b>Lua de mel</b>, <b>Aposentadoria</b>…</p></div>';
+  } else {
+    tot.style.display='';
+    $('#boxTotalVal').textContent=fmt(totalSaved());
+    el.innerHTML = state.boxes.map(b=>{
+      const bal=boxBalance(b.id);
+      const pct = b.target ? Math.min(100, bal/b.target*100) : 0;
+      return `<div class="box">
+        <div class="hd" data-boxedit="${b.id}" style="cursor:pointer">
+          <span class="ic">${boxIcon(b.name)}</span>
+          <span class="nm">${esc(b.name)}</span>
+          <span class="bal">${fmt(bal)}</span>
+        </div>
+        ${b.target?`<div class="meta">Meta: ${fmt0(b.target)} · ${Math.round(pct)}% ${pct>=100?'— meta batida! 🎉':''}</div><div class="bar"><i style="width:${Math.max(2,pct)}%"></i></div>`:''}
+        <div class="acts">
+          <button class="g" data-boxg="${b.id}">+ Guardar</button>
+          <button data-boxr="${b.id}">Resgatar</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  // sugestão de sobra do mês passado
+  const s=lastMonthLeftover();
+  const sg=$('#boxSuggest');
+  if(s.value>0.009 && state.tx.some(t=>mkey(t.date)===s.month)){
+    sg.style.display='';
+    $('#boxSuggestTxt').innerHTML='Sobraram <b>'+fmt(s.value)+'</b> em '+monthLabel(s.month).toLowerCase()+'. Guarde com propósito antes que o dinheiro se perca no dia a dia.';
+    $('#boxSuggestBtn').onclick=()=>openMov(null, s.value, 1);
+  } else sg.style.display='none';
+}
+
+/* modais de caixinha */
+let boxEditing=null, movBoxId=null, movDir=1;
+$('#addBoxBtn').onclick=()=>{ boxEditing=null; $('#boxSheetTitle').textContent='Nova caixinha';
+  $('#boxName').value=''; $('#boxTarget').value=''; $('#boxDel').style.display='none'; $('#boxOverlay').classList.add('show'); };
+function openBoxEdit(id){ const b=state.boxes.find(x=>x.id===id); if(!b) return;
+  boxEditing=id; $('#boxSheetTitle').textContent='Editar caixinha';
+  $('#boxName').value=b.name; $('#boxTarget').value=b.target?b.target.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
+  $('#boxDel').style.display=''; $('#boxOverlay').classList.add('show'); }
+$('#boxCancel').onclick=()=>$('#boxOverlay').classList.remove('show');
+$('#boxSave').onclick=()=>{
+  const name=$('#boxName').value.trim(); if(!name){ toast('Dê um nome à caixinha'); return; }
+  const target=$('#boxTarget').value.trim()? parseMoney($('#boxTarget').value) : null;
+  if(boxEditing){ const b=state.boxes.find(x=>x.id===boxEditing); b.name=name; b.target=target; }
+  else state.boxes.push({id:uid(), name, target});
+  save(); $('#boxOverlay').classList.remove('show'); render();
+};
+$('#boxDel').onclick=()=>{ if(confirm('Excluir esta caixinha? O histórico de guardado/resgatado dela também será removido.')){
+  state.boxes=state.boxes.filter(b=>b.id!==boxEditing);
+  state.boxmov=state.boxmov.filter(m=>m.boxId!==boxEditing);
+  save(); $('#boxOverlay').classList.remove('show'); render(); } };
+
+function openMov(boxId, preset, dir){
+  movBoxId=boxId; movDir=dir;
+  $('#movTitle').textContent = dir>0? 'Guardar na caixinha' : 'Resgatar da caixinha';
+  $('#movHint').textContent = dir>0? 'O valor sai da sobra livre do mês e fica guardado com propósito.' : 'O valor volta para a sobra livre do mês.';
+  const wrap=$('#movBoxPickWrap');
+  if(boxId){ wrap.style.display='none'; }
+  else {
+    if(!state.boxes.length){ toast('Crie uma caixinha primeiro'); goView('box'); $('#addBoxBtn').click(); return; }
+    wrap.style.display='';
+    $('#movBoxPick').innerHTML=state.boxes.map(b=>`<option value="${b.id}">${boxIcon(b.name)} ${esc(b.name)}</option>`).join('');
+  }
+  $('#movAmt').value = preset? preset.toLocaleString('pt-BR',{minimumFractionDigits:2}) : '';
+  $('#movOverlay').classList.add('show');
+}
+$('#movCancel').onclick=()=>$('#movOverlay').classList.remove('show');
+$('#movSave').onclick=()=>{
+  const amt=parseMoney($('#movAmt').value);
+  if(amt===null||amt<=0){ toast('Informe um valor válido'); return; }
+  const id=movBoxId || $('#movBoxPick').value;
+  if(movDir<0 && amt>boxBalance(id)+0.009){ toast('A caixinha não tem esse valor guardado'); return; }
+  state.boxmov.push({id:uid(), boxId:id, amount:movDir*amt, date:todayISO()});
+  save(); $('#movOverlay').classList.remove('show'); render();
+  const b=state.boxes.find(x=>x.id===id);
+  toast(movDir>0? fmt(amt)+' guardados em '+(b?b.name:'caixinha')+' ✓' : fmt(amt)+' resgatados ✓');
+};
+
 function esc(s){ return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2200); }
 
@@ -661,10 +872,11 @@ $('#quickBtn').onclick=doQuick;
 quickIn.addEventListener('keydown', e=>{ if(e.key==='Enter') doQuick(); });
 
 /* ============ navigation ============ */
-$$('nav.bottom button').forEach(b=>b.onclick=()=>{
-  $$('nav.bottom button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
-  $$('.view').forEach(v=>v.classList.remove('on')); $('#v-'+b.dataset.v).classList.add('on');
-});
+function goView(v){
+  $$('nav.bottom button').forEach(x=>x.classList.toggle('on', x.dataset.v===v));
+  $$('.view').forEach(x=>x.classList.remove('on')); $('#v-'+v).classList.add('on');
+}
+$$('nav.bottom button').forEach(b=>b.onclick=()=>goView(b.dataset.v));
 function shiftMonth(d){
   const y=+state.view.slice(0,4), m=+state.view.slice(5,7)-1+d;
   const nd=new Date(y,m,1); state.view=nd.getFullYear()+'-'+String(nd.getMonth()+1).padStart(2,'0');
@@ -686,6 +898,14 @@ document.addEventListener('click', e=>{
       save(); render(); } return; }
   const ev=e.target.closest('[data-env]');
   if(ev){ openEnv(ev.dataset.env); return; }
+  const gb=e.target.closest('[data-gobox]');
+  if(gb){ goView('box'); return; }
+  const be=e.target.closest('[data-boxedit]');
+  if(be){ openBoxEdit(be.dataset.boxedit); return; }
+  const bg=e.target.closest('[data-boxg]');
+  if(bg){ openMov(bg.dataset.boxg, null, 1); return; }
+  const br=e.target.closest('[data-boxr]');
+  if(br){ openMov(br.dataset.boxr, null, -1); return; }
 });
 
 /* ============ tx modal ============ */
@@ -761,11 +981,11 @@ $$('.overlay').forEach(o=>o.addEventListener('click',e=>{ if(e.target===o) o.cla
 
 /* ============ theme ============ */
 function applyTheme(){
-  const t = state.theme || (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+  const t = localStorage.getItem('sobra.theme') || (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
   document.documentElement.dataset.theme=t;
 }
 $('#themeBtn').onclick=()=>{ const cur=document.documentElement.dataset.theme;
-  state.theme = cur==='dark'?'light':'dark'; save(); applyTheme(); render(); };
+  localStorage.setItem('sobra.theme', cur==='dark'?'light':'dark'); applyTheme(); render(); };
 
 /* ============ export / import ============ */
 function download(name, content, mime){
@@ -773,7 +993,7 @@ function download(name, content, mime){
   a.href=URL.createObjectURL(new Blob([content],{type:mime}));
   a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 }
-$('#expJson').onclick=()=>download('sobra-backup-'+todayISO()+'.json', JSON.stringify({tx:state.tx,rec:state.rec,budgets:state.budgets},null,2),'application/json');
+$('#expJson').onclick=()=>download('sobra-backup-'+todayISO()+'.json', JSON.stringify(snapshot(),null,2),'application/json');
 $('#expCsv').onclick=()=>{
   const rows=[['data','tipo','descricao','categoria','valor','status']];
   [...state.tx].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>rows.push([t.date,t.type,t.desc,t.category,String(t.amount).replace('.',','),t.pending?'previsto':'efetivado']));
@@ -786,16 +1006,76 @@ $('#impFile').addEventListener('change', e=>{
   const r=new FileReader();
   r.onload=()=>{ try{ const d=JSON.parse(r.result);
       if(!Array.isArray(d.tx)) throw 0;
-      state.tx=d.tx; state.rec=d.rec||[]; state.budgets=d.budgets||{};
+      adopt(d);
       save(); render(); toast('Backup restaurado ✓');
     }catch(_){ toast('Arquivo inválido'); } };
   r.readAsText(f); e.target.value='';
 });
-$('#wipe').onclick=()=>{ if(confirm('Apagar TODOS os dados deste dispositivo? Essa ação não pode ser desfeita.')){
-  localStorage.removeItem(LS); state={tx:[],rec:[],budgets:{},theme:state.theme,view:todayISO().slice(0,7)}; save(); render(); toast('Dados apagados'); } };
+$('#wipe').onclick=()=>{ if(confirm('Apagar TODOS os dados'+(CLOUD&&user?' (deste dispositivo e da nuvem)':' deste dispositivo')+'? Essa ação não pode ser desfeita.')){
+  localStorage.removeItem(LS); localStorage.removeItem(lsKey());
+  state={tx:[],rec:[],budgets:{},boxes:[],boxmov:[],theme:null,view:todayISO().slice(0,7)}; save(); render(); toast('Dados apagados'); } };
+
+/* ============ auth (Supabase) ============ */
+function authMsg(t){ const m=$('#authMsg'); if(t){ m.style.display=''; m.innerHTML=t; } else m.style.display='none'; }
+function showAuth(){ $('#authScreen').style.display=''; }
+function hideAuth(){ $('#authScreen').style.display='none'; }
+let authEmail='';
+if(CLOUD){
+  $('#authSend').onclick=async ()=>{
+    const email=$('#authEmail').value.trim().toLowerCase();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ authMsg('Digite um e-mail válido.'); return; }
+    authMsg('Enviando…');
+    const {error} = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.origin } });
+    if(error){ authMsg('Não consegui enviar: '+esc(error.message)); return; }
+    authEmail=email; $('#authSentTo').textContent=email;
+    $('#authStep1').style.display='none'; $('#authStep2').style.display=''; authMsg('');
+  };
+  $('#authVerify').onclick=async ()=>{
+    const token=$('#authCode').value.trim();
+    if(!token){ authMsg('Digite o código recebido por e-mail.'); return; }
+    authMsg('Verificando…');
+    const {error} = await sb.auth.verifyOtp({ email:authEmail, token, type:'email' });
+    if(error){ authMsg('Código inválido ou expirado. Tente de novo ou use o link do e-mail.'); }
+  };
+  $('#authBack').onclick=()=>{ $('#authStep2').style.display='none'; $('#authStep1').style.display=''; authMsg(''); };
+}
+async function enterApp(session){
+  user = session.user;
+  hideAuth();
+  const rl=$('#rowLogout'); if(rl){ rl.style.display=''; $('#logoutMail').textContent=user.email||''; }
+  try{
+    const {data, error} = await sb.from('app_state').select('data').eq('user_id', user.id).maybeSingle();
+    if(error) throw error;
+    if(data && data.data && Array.isArray(data.data.tx)){
+      adopt(data.data);
+      localStorage.setItem(lsKey(), JSON.stringify(snapshot()));
+    } else {
+      load();
+      if(!state.tx.length && !state.rec.length){
+        try{ const legacy=JSON.parse(localStorage.getItem(LS));
+          if(legacy && legacy.tx && legacy.tx.length){ adopt(legacy);
+            toast('Dados deste dispositivo migrados para a nuvem ✓'); } }catch(e){}
+      }
+      pushCloud();
+    }
+  }catch(e){ load(); toast('⚠️ Nuvem indisponível — usando dados deste dispositivo'); }
+  render();
+}
+$('#logoutBtn') && ($('#logoutBtn').onclick=async ()=>{ if(confirm('Sair da conta neste dispositivo?')){ await sb.auth.signOut(); } });
 
 /* ============ init ============ */
-load(); applyTheme(); render();
+applyTheme();
+if(CLOUD){
+  sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+  sb.auth.onAuthStateChange((ev, session)=>{
+    if(session && !user) enterApp(session);
+    if(ev==='SIGNED_OUT'){ user=null; location.reload(); }
+  });
+  sb.auth.getSession().then(({data:{session}})=>{ if(session){ if(!user) enterApp(session); } else showAuth(); });
+  render();
+} else {
+  load(); render();
+}
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 </script>
