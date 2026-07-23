@@ -379,7 +379,7 @@ nav.bottom button svg{width:22px; height:22px}
 <!-- Modal recorrente -->
 <div class="overlay" id="recOverlay">
   <div class="sheet">
-    <h3>Nova recorrente</h3>
+    <h3 id="recSheetTitle">Nova recorrente</h3>
     <div class="f"><div class="seg" id="recType">
       <button data-t="despesa" class="desp on">Despesa</button>
       <button data-t="receita" class="rec">Receita</button>
@@ -752,9 +752,9 @@ function renderEnv(){
 function renderRec(){
   const inc = state.rec.filter(r=>r.type==='receita');
   const exp = state.rec.filter(r=>r.type==='despesa');
-  const item = r=>`<div class="recitem">
+  const item = r=>`<div class="recitem" data-recedit="${r.id}" style="cursor:pointer" title="Toque para editar">
     <div class="cdot" style="font-size:18px">${CAT_ICON[r.category]||'📦'}</div>
-    <div class="info"><div class="d">${esc(r.desc)}</div><div class="m">todo dia ${r.day} · ${r.category}</div></div>
+    <div class="info"><div class="d">${esc(r.desc)}</div><div class="m">todo dia ${r.day} · ${r.category} · toque para editar</div></div>
     <div class="a ${r.type==='receita'?'pos':''}">${r.type==='receita'?'+':'−'}${fmt(r.amount)}</div>
     <button class="del" data-delrec="${r.id}" aria-label="Excluir">🗑️</button>
   </div>`;
@@ -896,6 +896,8 @@ document.addEventListener('click', e=>{
       state.rec=state.rec.filter(r=>r.id!==dr.dataset.delrec);
       state.tx=state.tx.filter(t=>!(t.recId===dr.dataset.delrec && t.pending));
       save(); render(); } return; }
+  const re=e.target.closest('[data-recedit]');
+  if(re){ openRecEdit(re.dataset.recedit); return; }
   const ev=e.target.closest('[data-env]');
   if(ev){ openEnv(ev.dataset.env); return; }
   const gb=e.target.closest('[data-gobox]');
@@ -938,19 +940,41 @@ $('#txSave').onclick=()=>{
 };
 
 /* ============ recurring modal ============ */
+let recEditing=null;
 $('#addRecBtn').onclick=()=>{
+  recEditing=null; $('#recSheetTitle').textContent='Nova recorrente';
   $('#recDesc').value=''; $('#recAmt').value=''; $('#recDay').value='5';
   setRecType('despesa'); $('#recOverlay').classList.add('show');
 };
+function openRecEdit(id){
+  const r=state.rec.find(x=>x.id===id); if(!r) return;
+  recEditing=id; $('#recSheetTitle').textContent='Editar recorrente';
+  $('#recDesc').value=r.desc; $('#recAmt').value=r.amount.toLocaleString('pt-BR',{minimumFractionDigits:2});
+  $('#recDay').value=r.day;
+  setRecType(r.type); fillCatSelect($('#recCat'), r.type, r.category);
+  $('#recOverlay').classList.add('show');
+}
 function setRecType(ty){ $$('#recType button').forEach(b=>b.classList.toggle('on',b.dataset.t===ty)); fillCatSelect($('#recCat'), ty, null); }
 $$('#recType button').forEach(b=>b.onclick=()=>setRecType(b.dataset.t));
 $('#recCancel').onclick=()=>$('#recOverlay').classList.remove('show');
 $('#recSave').onclick=()=>{
   const amt=parseMoney($('#recAmt').value); const day=Math.min(31,Math.max(1,+$('#recDay').value||1));
   if(!$('#recDesc').value.trim()||amt===null||amt<=0){ toast('Confira descrição e valor'); return; }
-  state.rec.push({id:uid(), desc:$('#recDesc').value.trim(), amount:amt, day,
-    type:$('#recType .on').dataset.t, category:$('#recCat').value, startMonth: state.view});
-  save(); $('#recOverlay').classList.remove('show'); render(); toast('Recorrente criada — entra todo mês como prevista');
+  const desc=$('#recDesc').value.trim(), type=$('#recType .on').dataset.t, category=$('#recCat').value;
+  if(recEditing){
+    const r=state.rec.find(x=>x.id===recEditing); if(!r) return;
+    r.desc=desc; r.amount=amt; r.day=day; r.type=type; r.category=category;
+    // atualiza os lançamentos PREVISTOS (ainda não pagos/recebidos) desta recorrente
+    state.tx.forEach(t=>{ if(t.recId===r.id && t.pending){
+      t.desc=desc; t.amount=amt; t.type=type; t.category=category;
+      const m=mkey(t.date); const last=new Date(+m.slice(0,4), +m.slice(5,7), 0).getDate();
+      t.date=m+'-'+String(Math.min(day,last)).padStart(2,'0');
+    }});
+    save(); $('#recOverlay').classList.remove('show'); render(); toast('Recorrente atualizada — previstos ajustados ✓');
+  } else {
+    state.rec.push({id:uid(), desc, amount:amt, day, type, category, startMonth: state.view});
+    save(); $('#recOverlay').classList.remove('show'); render(); toast('Recorrente criada — entra todo mês como prevista');
+  }
 };
 
 /* ============ envelope modal ============ */
