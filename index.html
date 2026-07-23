@@ -237,7 +237,52 @@ nav.bottom button svg{width:22px; height:22px}
 }
 .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px)}
 .view{display:none} .view.on{display:block}
-@media (min-width:561px){ body{border-left:1px solid var(--ring); border-right:1px solid var(--ring)} }
+@media (min-width:561px) and (max-width:899px){ body{border-left:1px solid var(--ring); border-right:1px solid var(--ring)} }
+
+/* ===== desktop (≥900px): sidebar + colunas ===== */
+@media (min-width:900px){
+  body{ max-width:none; margin:0; padding:0 48px 48px 288px; }
+  header.top{ max-width:1060px; padding:28px 0 8px; }
+  header.top .brand{ font-size:20px }
+  .monthnav{ max-width:1060px; justify-content:flex-start; padding-left:0 }
+  main{ max-width:1060px; padding:0 }
+  /* nav vira sidebar */
+  nav.bottom{
+    left:0; top:0; bottom:0; transform:none; width:240px; max-width:240px;
+    display:flex; flex-direction:column; gap:6px; justify-content:flex-start;
+    padding:96px 16px 24px; border-top:none; border-right:1px solid var(--ring);
+  }
+  nav.bottom button{
+    flex-direction:row; justify-content:flex-start; gap:12px;
+    font-size:14.5px; padding:12px 14px; border-radius:12px; width:100%;
+  }
+  nav.bottom button.on{ background:var(--surface2) }
+  nav.bottom button svg{ width:20px; height:20px }
+  /* home em duas colunas */
+  #v-home.on{ display:grid; grid-template-columns:1.05fr 1fr; gap:0 24px; align-items:start }
+  #v-home .quick, #v-home #preview, #v-home .hint, #v-home #homeEmpty,
+  #v-home #catTitle, #v-home #catCard{ grid-column:1/-1 }
+  #v-home .kpis{ grid-column:1 }
+  #v-home #heroCard{ grid-column:2; grid-row:span 2; align-self:stretch }
+  #v-home #pendWrap{ grid-column:1 }
+  #v-home #homeBoxes{ grid-column:1/-1 }
+  #heroCard .val{ font-size:40px }
+  /* listas em duas colunas */
+  #recIncomes, #recExpenses{ display:grid; grid-template-columns:1fr 1fr; gap:8px }
+  #recIncomes .recitem, #recExpenses .recitem{ margin-bottom:0 }
+  #recIncomes .hint, #recExpenses .hint{ grid-column:1/-1 }
+  #boxList{ display:grid; grid-template-columns:1fr 1fr; gap:10px }
+  #boxList .box{ margin-bottom:0 }
+  #boxList .empty{ grid-column:1/-1 }
+  #txList{ column-count:2; column-gap:24px }
+  #txList .txgroup{ break-inside:avoid }
+  #envList .card{ column-count:2; column-gap:28px }
+  #envList .env{ break-inside:avoid; margin-bottom:14px }
+  /* modais centralizados */
+  .overlay{ align-items:center }
+  .sheet{ max-width:480px; border-radius:20px; padding-bottom:20px }
+  .toast{ bottom:48px }
+}
 </style>
 </head>
 <body>
@@ -549,7 +594,8 @@ function parseQuick(text){
 const LS='sobra.v1';
 const SUPA_URL='https://xhlnjtjpduzuzsiffeep.supabase.co';
 const SUPA_KEY='sb_publishable_XCO02ELxRKJtn9FSiSKz5A_1gU8CSjc';
-const CLOUD = SUPA_URL.indexOf('https')===0 && !!window.supabase;
+const CONFIGURED = SUPA_URL.indexOf('https')===0;
+const CLOUD = CONFIGURED && !!window.supabase;
 let sb=null, user=null, syncTimer=null, dirty=false;
 let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], theme:null, view: todayISO().slice(0,7) };
 function lsKey(){ return user ? LS+'.'+user.id : LS; }
@@ -1097,6 +1143,11 @@ if(CLOUD){
   });
   sb.auth.getSession().then(({data:{session}})=>{ if(session){ if(!user) enterApp(session); } else showAuth(); });
   render();
+} else if(CONFIGURED){
+  /* fail-closed: sem o módulo de autenticação, ninguém entra */
+  showAuth();
+  const s1=$('#authStep1'); if(s1) s1.style.display='none';
+  authMsg('⚠️ Não foi possível carregar o módulo de autenticação. Verifique sua conexão e <a href="javascript:location.reload()" style="color:var(--accent)">recarregue a página</a>.');
 } else {
   load(); render();
 }
