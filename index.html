@@ -382,6 +382,7 @@ nav.bottom button svg{width:22px; height:22px}
       <div class="setrow"><div><div class="t">Exportar extrato (CSV)</div><div class="s">Abre no Excel / Google Planilhas</div></div><button class="act" id="expCsv">Exportar</button></div>
       <div class="setrow"><div><div class="t">Importar backup</div><div class="s">Restaura um arquivo JSON exportado</div></div><button class="act" id="impJson">Importar</button></div>
       <div class="setrow"><div><div class="t">Apagar tudo</div><div class="s">Remove todos os dados deste dispositivo</div></div><button class="act red" id="wipe">Apagar</button></div>
+      <div class="setrow" id="rowPwd" style="display:none"><div><div class="t">Definir / alterar senha</div><div class="s">Para entrar sem depender do link por e-mail</div></div><button class="act" id="pwdBtn">Definir</button></div>
       <div class="setrow" id="rowLogout" style="display:none"><div><div class="t">Sair da conta</div><div class="s" id="logoutMail"></div></div><button class="act" id="logoutBtn">Sair</button></div>
     </div>
     <div class="hint">Seus dados ficam <b>somente neste dispositivo</b> — nada é enviado para servidores. Faça backups de vez em quando. 💡 No celular, use “Adicionar à tela de início” para instalar como app.</div>
@@ -484,6 +485,19 @@ nav.bottom button svg{width:22px; height:22px}
   </div>
 </div>
 
+<!-- Modal definir senha -->
+<div class="overlay" id="pwdOverlay">
+  <div class="sheet">
+    <h3>Definir senha</h3>
+    <div class="f"><label>Nova senha (mín. 8 caracteres)</label><input id="pwdNew" type="password" autocomplete="new-password"></div>
+    <div class="f"><label>Repetir a senha</label><input id="pwdNew2" type="password" autocomplete="new-password"></div>
+    <div class="actions">
+      <button class="ghost" id="pwdCancel">Cancelar</button>
+      <button class="primary" id="pwdSave">Salvar senha</button>
+    </div>
+  </div>
+</div>
+
 <!-- Tela de login (Supabase) -->
 <div id="authScreen" style="display:none; position:fixed; inset:0; z-index:90; background:var(--page); overflow-y:auto">
   <div style="max-width:400px; margin:0 auto; padding:60px 24px">
@@ -495,8 +509,10 @@ nav.bottom button svg{width:22px; height:22px}
     <div class="card">
       <div id="authStep1">
         <div class="f"><label>Seu e-mail</label><input id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="voce@exemplo.com"></div>
-        <button class="quickbtn" id="authSend" style="width:100%; background:var(--accent); color:#fff; border-radius:12px; padding:14px; font-weight:700; font-size:15px">Enviar link de acesso</button>
-        <div class="hint" style="margin-top:10px">Sem senha: você recebe um link por e-mail e toca nele para entrar. Na primeira vez, a conta é criada automaticamente.</div>
+        <div class="f"><label>Senha</label><input id="authPass" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+        <button id="authLogin" style="width:100%; background:var(--accent); color:#fff; border-radius:12px; padding:14px; font-weight:700; font-size:15px">Entrar</button>
+        <button id="authSend" style="width:100%; margin-top:8px; background:var(--surface2); color:var(--ink2); border-radius:12px; padding:13px; font-weight:600; font-size:14px">Primeiro acesso / esqueci a senha — receber link por e-mail</button>
+        <div class="hint" style="margin-top:10px">No primeiro acesso, entre pelo link do e-mail e depois defina sua senha em <b>Ajustes</b>. Nos próximos, é só e-mail e senha — e o app mantém você conectado neste dispositivo.</div>
       </div>
       <div id="authStep2" style="display:none">
         <div class="hint" style="margin:0 0 10px">Enviamos um e-mail para <b id="authSentTo"></b>. <b>Toque no link do e-mail</b> para entrar. Se o e-mail trouxer um código, você também pode digitá-lo abaixo:</div>
@@ -1091,6 +1107,16 @@ function showAuth(){ $('#authScreen').style.display=''; }
 function hideAuth(){ $('#authScreen').style.display='none'; }
 let authEmail='';
 if(CLOUD){
+  $('#authLogin').onclick=async ()=>{
+    const email=$('#authEmail').value.trim().toLowerCase();
+    const password=$('#authPass').value;
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ authMsg('Digite um e-mail válido.'); return; }
+    if(!password){ authMsg('Digite sua senha — ou use o link por e-mail no primeiro acesso.'); return; }
+    authMsg('Entrando…');
+    const {error} = await sb.auth.signInWithPassword({ email, password });
+    if(error){ authMsg('E-mail ou senha incorretos. Se é seu primeiro acesso ou esqueceu a senha, use o botão de link por e-mail.'); }
+  };
+  $('#authPass').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#authLogin').click(); });
   $('#authSend').onclick=async ()=>{
     const email=$('#authEmail').value.trim().toLowerCase();
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ authMsg('Digite um e-mail válido.'); return; }
@@ -1113,6 +1139,7 @@ async function enterApp(session){
   user = session.user;
   hideAuth();
   const rl=$('#rowLogout'); if(rl){ rl.style.display=''; $('#logoutMail').textContent=user.email||''; }
+  const rp=$('#rowPwd'); if(rp) rp.style.display='';
   try{
     const {data, error} = await sb.from('app_state').select('data').eq('user_id', user.id).maybeSingle();
     if(error) throw error;
@@ -1132,6 +1159,17 @@ async function enterApp(session){
   render();
 }
 $('#logoutBtn') && ($('#logoutBtn').onclick=async ()=>{ if(confirm('Sair da conta neste dispositivo?')){ await sb.auth.signOut(); } });
+$('#pwdBtn') && ($('#pwdBtn').onclick=()=>{ $('#pwdNew').value=''; $('#pwdNew2').value=''; $('#pwdOverlay').classList.add('show'); });
+$('#pwdCancel').onclick=()=>$('#pwdOverlay').classList.remove('show');
+$('#pwdSave').onclick=async ()=>{
+  const p1=$('#pwdNew').value, p2=$('#pwdNew2').value;
+  if(p1.length<8){ toast('A senha precisa ter pelo menos 8 caracteres'); return; }
+  if(p1!==p2){ toast('As senhas não conferem'); return; }
+  const {error} = await sb.auth.updateUser({ password: p1 });
+  if(error){ toast('Não foi possível salvar: '+error.message); return; }
+  $('#pwdOverlay').classList.remove('show');
+  toast('Senha definida ✓ — use e-mail e senha nos próximos acessos');
+};
 
 /* ============ init ============ */
 applyTheme();
