@@ -414,6 +414,8 @@ nav.bottom button svg{width:22px; height:22px}
     </div>
     <div class="f"><label>Categoria</label><select id="txCat"></select></div>
     <div class="f"><label><input type="checkbox" id="txPend" style="width:auto;margin-right:6px">Previsto (ainda não pago/recebido)</label></div>
+    <div class="f" id="txRecWrap"><label><input type="checkbox" id="txMakeRec" style="width:auto;margin-right:6px">🔁 Repetir todo mês (criar recorrente a partir deste lançamento)</label></div>
+    <div class="hint" id="txRecInfo" style="display:none; margin:0 0 8px">🔁 Este lançamento veio de uma recorrente. Alterações aqui (ex.: o valor que veio diferente) valem <b>só para este mês</b> — para mudar os próximos, edite a recorrente na aba própria.</div>
     <div class="actions">
       <button class="danger" id="txDel">Excluir</button>
       <button class="ghost" id="txCancel">Cancelar</button>
@@ -749,9 +751,9 @@ function renderHome(){
   const pw=$('#pendWrap');
   if(pend.length || plans.length){
     pw.innerHTML = '<h2 class="sec">A pagar / a receber / a guardar</h2><div class="pendstrip">'+pend.map(t=>`
-      <div class="pend">
+      <div class="pend" data-tx="${t.id}" style="cursor:pointer" title="Toque para ajustar o valor deste mês">
         <div class="cdot" style="font-size:18px">${CAT_ICON[t.category]||'📦'}</div>
-        <div class="info"><div class="d">${esc(t.desc)}</div><div class="m">dia ${+t.date.slice(8,10)} · ${t.category}</div></div>
+        <div class="info"><div class="d">${esc(t.desc)}</div><div class="m">dia ${+t.date.slice(8,10)} · ${t.category} · toque para ajustar</div></div>
         <div class="amt ${t.type==='receita'?'pos':'neg'}">${t.type==='receita'?'+':'−'}${fmt0(t.amount)}</div>
         <button class="ok" data-confirm="${t.id}">✓</button>
       </div>`).join('')+plans.map(p=>`
@@ -1039,6 +1041,9 @@ function openTx(id){
   editId=id;
   $('#txDesc').value=t.desc; $('#txAmt').value=t.amount.toLocaleString('pt-BR',{minimumFractionDigits:2});
   $('#txDate').value=t.date; $('#txPend').checked=!!t.pending;
+  $('#txMakeRec').checked=false;
+  $('#txRecWrap').style.display = t.recId ? 'none' : '';
+  $('#txRecInfo').style.display = t.recId ? '' : 'none';
   setTxType(t.type); fillCatSelect($('#txCat'), t.type, t.category);
   $('#txOverlay').classList.add('show');
 }
@@ -1055,6 +1060,15 @@ $('#txSave').onclick=()=>{
   if(!$('#txDesc').value.trim()||amt===null||amt<=0||!$('#txDate').value){ toast('Confira descrição, valor e data'); return; }
   t.desc=$('#txDesc').value.trim(); t.amount=amt; t.date=$('#txDate').value;
   t.type=$('#txType .on').dataset.t; t.category=$('#txCat').value; t.pending=$('#txPend').checked;
+  if(t.recId) t.override=true; // ajuste manual deste mês: protegido de sobrescrita pela recorrente
+  if($('#txMakeRec').checked && !t.recId){
+    const rec={id:uid(), desc:t.desc, amount:t.amount, day:Math.min(31,Math.max(1,+t.date.slice(8,10))),
+      type:t.type, category:t.category, startMonth:mkey(t.date)};
+    state.rec.push(rec); t.recId=rec.id;
+    save(); $('#txOverlay').classList.remove('show'); render();
+    toast('Salvo — agora "'+rec.desc+'" se repete todo dia '+rec.day+' ✓');
+    return;
+  }
   save(); $('#txOverlay').classList.remove('show'); render();
 };
 
@@ -1088,7 +1102,7 @@ $('#recSave').onclick=()=>{
     r.desc=desc; r.amount=amt; r.day=day; r.type=type; r.category=category; r.startMonth=startMonth;
     // remove previstos anteriores ao início e atualiza os demais previstos
     state.tx=state.tx.filter(t=>!(t.recId===r.id && t.pending && mkey(t.date)<startMonth));
-    state.tx.forEach(t=>{ if(t.recId===r.id && t.pending){
+    state.tx.forEach(t=>{ if(t.recId===r.id && t.pending && !t.override){
       t.desc=desc; t.amount=amt; t.type=type; t.category=category;
       const m=mkey(t.date); const last=new Date(+m.slice(0,4), +m.slice(5,7), 0).getDate();
       t.date=m+'-'+String(Math.min(day,last)).padStart(2,'0');
