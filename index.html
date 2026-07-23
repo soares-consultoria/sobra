@@ -435,7 +435,10 @@ nav.bottom button svg{width:22px; height:22px}
       <div class="f"><label>Valor (R$)</label><input id="recAmt" type="text" inputmode="decimal" placeholder="0,00"></div>
       <div class="f"><label>Dia do mês</label><input id="recDay" type="number" min="1" max="31" value="5"></div>
     </div>
-    <div class="f"><label>Categoria</label><select id="recCat"></select></div>
+    <div class="frow">
+      <div class="f"><label>Categoria</label><select id="recCat"></select></div>
+      <div class="f"><label>Início (mês/ano)</label><input id="recStart" type="month"></div>
+    </div>
     <div class="actions">
       <button class="ghost" id="recCancel">Cancelar</button>
       <button class="primary" id="recSave">Salvar</button>
@@ -463,7 +466,10 @@ nav.bottom button svg{width:22px; height:22px}
     <h3 id="boxSheetTitle">Nova caixinha</h3>
     <div class="f"><label>Nome</label><input id="boxName" type="text" placeholder="Ex.: Férias, Lua de mel, Reserva de emergência"></div>
     <div class="f"><label>Meta (R$, opcional)</label><input id="boxTarget" type="text" inputmode="decimal" placeholder="Ex.: 10.000,00"></div>
-    <div class="f"><label>Guardar por mês (R$, opcional)</label><input id="boxMonthly" type="text" inputmode="decimal" placeholder="Ex.: 500,00"></div>
+    <div class="frow">
+      <div class="f"><label>Guardar por mês (R$, opcional)</label><input id="boxMonthly" type="text" inputmode="decimal" placeholder="Ex.: 500,00"></div>
+      <div class="f"><label>Início do plano (mês/ano)</label><input id="boxStart" type="month"></div>
+    </div>
     <div class="actions">
       <button class="danger" id="boxDel" style="display:none">Excluir</button>
       <button class="ghost" id="boxCancel">Cancelar</button>
@@ -685,7 +691,12 @@ const BOX_ICONS=[[/f[ée]rias/,'🏖️'],[/viagem/,'✈️'],[/lua de mel|casam
 function boxIcon(name){ const n=(name||'').toLowerCase(); for(const p of BOX_ICONS){ if(p[0].test(n)) return p[1]; } return '🐷'; }
 function boxBalance(id){ return state.boxmov.filter(m=>m.boxId===id).reduce((s,m)=>s+m.amount,0); }
 function contribThisMonth(id){ const m=todayISO().slice(0,7); return state.boxmov.filter(x=>x.boxId===id && x.amount>0 && mkey(x.date)===m).reduce((s,x)=>s+x.amount,0); }
-function planRemaining(b){ return b.monthly>0 ? Math.max(0, b.monthly - contribThisMonth(b.id)) : 0; }
+function planRemaining(b){
+  if(!(b.monthly>0)) return 0;
+  if(b.planStart && todayISO().slice(0,7) < b.planStart) return 0; // plano ainda não começou
+  return Math.max(0, b.monthly - contribThisMonth(b.id));
+}
+function monthsDiff(a,b){ const [ay,am]=a.split('-').map(Number), [by,bm]=b.split('-').map(Number); return (by-ay)*12+(bm-am); }
 function totalSaved(){ return state.boxes.reduce((s,b)=>s+boxBalance(b.id),0); }
 function lastMonthLeftover(){
   const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
@@ -829,7 +840,7 @@ function renderRec(){
   const exp = state.rec.filter(r=>r.type==='despesa');
   const item = r=>`<div class="recitem" data-recedit="${r.id}" style="cursor:pointer" title="Toque para editar">
     <div class="cdot" style="font-size:18px">${CAT_ICON[r.category]||'📦'}</div>
-    <div class="info"><div class="d">${esc(r.desc)}</div><div class="m">todo dia ${r.day} · ${r.category} · toque para editar</div></div>
+    <div class="info"><div class="d">${esc(r.desc)}</div><div class="m">todo dia ${r.day} · ${r.category}${r.startMonth && r.startMonth>todayISO().slice(0,7) ? ' · começa em '+r.startMonth.slice(5,7)+'/'+r.startMonth.slice(0,4) : ''} · toque para editar</div></div>
     <div class="a ${r.type==='receita'?'pos':''}">${r.type==='receita'?'+':'−'}${fmt(r.amount)}</div>
     <button class="del" data-delrec="${r.id}" aria-label="Excluir">🗑️</button>
   </div>`;
@@ -851,16 +862,21 @@ function renderBoxes(){
       const pct = b.target ? Math.min(100, bal/b.target*100) : 0;
       let plano='';
       if(b.monthly>0){
+        const cur=todayISO().slice(0,7);
+        const notStarted = b.planStart && cur < b.planStart;
+        const offset = notStarted ? monthsDiff(cur, b.planStart) : 0;
         let proj='';
         if(b.target && bal<b.target){
           const meses=Math.ceil((b.target-bal)/b.monthly);
-          const d=new Date(); d.setMonth(d.getMonth()+meses);
-          proj=' · no ritmo, meta em ~'+meses+' '+(meses===1?'mês':'meses')+' ('+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear()+')';
+          const total=offset+meses;
+          const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()+total);
+          proj=' · no ritmo, meta em ~'+total+' '+(total===1?'mês':'meses')+' ('+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear()+')';
         }
+        const inicio = notStarted ? ' · começa em '+b.planStart.slice(5,7)+'/'+b.planStart.slice(0,4) : '';
         const falta=planRemaining(b);
-        plano=`<div class="meta">Plano: guardar ${fmt0(b.monthly)}/mês${proj}</div>`+
-          (falta>0.009?`<button style="width:100%; margin-top:8px; border:1.5px solid var(--accent); color:var(--accent); border-radius:10px; padding:9px; font-weight:600; font-size:13px" data-boxplan="${b.id}">Guardar ${fmt0(falta)} deste mês</button>`
-                      :`<div class="meta" style="color:var(--good-text)">✓ Plano do mês concluído</div>`);
+        plano=`<div class="meta">Plano: guardar ${fmt0(b.monthly)}/mês${inicio}${proj}</div>`+
+          (notStarted?'' : (falta>0.009?`<button style="width:100%; margin-top:8px; border:1.5px solid var(--accent); color:var(--accent); border-radius:10px; padding:9px; font-weight:600; font-size:13px" data-boxplan="${b.id}">Guardar ${fmt0(falta)} deste mês</button>`
+                      :`<div class="meta" style="color:var(--good-text)">✓ Plano do mês concluído</div>`));
       }
       return `<div class="box">
         <div class="hd" data-boxedit="${b.id}" style="cursor:pointer">
@@ -890,19 +906,23 @@ function renderBoxes(){
 /* modais de caixinha */
 let boxEditing=null, movBoxId=null, movDir=1;
 $('#addBoxBtn').onclick=()=>{ boxEditing=null; $('#boxSheetTitle').textContent='Nova caixinha';
-  $('#boxName').value=''; $('#boxTarget').value=''; $('#boxMonthly').value=''; $('#boxDel').style.display='none'; $('#boxOverlay').classList.add('show'); };
+  $('#boxName').value=''; $('#boxTarget').value=''; $('#boxMonthly').value='';
+  $('#boxStart').value=todayISO().slice(0,7);
+  $('#boxDel').style.display='none'; $('#boxOverlay').classList.add('show'); };
 function openBoxEdit(id){ const b=state.boxes.find(x=>x.id===id); if(!b) return;
   boxEditing=id; $('#boxSheetTitle').textContent='Editar caixinha';
   $('#boxName').value=b.name; $('#boxTarget').value=b.target?b.target.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
   $('#boxMonthly').value=b.monthly?b.monthly.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
+  $('#boxStart').value=b.planStart || todayISO().slice(0,7);
   $('#boxDel').style.display=''; $('#boxOverlay').classList.add('show'); }
 $('#boxCancel').onclick=()=>$('#boxOverlay').classList.remove('show');
 $('#boxSave').onclick=()=>{
   const name=$('#boxName').value.trim(); if(!name){ toast('Dê um nome à caixinha'); return; }
   const target=$('#boxTarget').value.trim()? parseMoney($('#boxTarget').value) : null;
   const monthly=$('#boxMonthly').value.trim()? parseMoney($('#boxMonthly').value) : null;
-  if(boxEditing){ const b=state.boxes.find(x=>x.id===boxEditing); b.name=name; b.target=target; b.monthly=monthly; }
-  else state.boxes.push({id:uid(), name, target, monthly});
+  const planStart = monthly && /^\d{4}-\d{2}$/.test($('#boxStart').value) ? $('#boxStart').value : null;
+  if(boxEditing){ const b=state.boxes.find(x=>x.id===boxEditing); b.name=name; b.target=target; b.monthly=monthly; b.planStart=planStart; }
+  else state.boxes.push({id:uid(), name, target, monthly, planStart});
   save(); $('#boxOverlay').classList.remove('show'); render();
 };
 $('#boxDel').onclick=()=>{ if(confirm('Excluir esta caixinha? O histórico de guardado/resgatado dela também será removido.')){
@@ -1043,6 +1063,7 @@ let recEditing=null;
 $('#addRecBtn').onclick=()=>{
   recEditing=null; $('#recSheetTitle').textContent='Nova recorrente';
   $('#recDesc').value=''; $('#recAmt').value=''; $('#recDay').value='5';
+  $('#recStart').value=state.view;
   setRecType('despesa'); $('#recOverlay').classList.add('show');
 };
 function openRecEdit(id){
@@ -1050,6 +1071,7 @@ function openRecEdit(id){
   recEditing=id; $('#recSheetTitle').textContent='Editar recorrente';
   $('#recDesc').value=r.desc; $('#recAmt').value=r.amount.toLocaleString('pt-BR',{minimumFractionDigits:2});
   $('#recDay').value=r.day;
+  $('#recStart').value=r.startMonth || state.view;
   setRecType(r.type); fillCatSelect($('#recCat'), r.type, r.category);
   $('#recOverlay').classList.add('show');
 }
@@ -1060,10 +1082,12 @@ $('#recSave').onclick=()=>{
   const amt=parseMoney($('#recAmt').value); const day=Math.min(31,Math.max(1,+$('#recDay').value||1));
   if(!$('#recDesc').value.trim()||amt===null||amt<=0){ toast('Confira descrição e valor'); return; }
   const desc=$('#recDesc').value.trim(), type=$('#recType .on').dataset.t, category=$('#recCat').value;
+  const startMonth=/^\d{4}-\d{2}$/.test($('#recStart').value)? $('#recStart').value : todayISO().slice(0,7);
   if(recEditing){
     const r=state.rec.find(x=>x.id===recEditing); if(!r) return;
-    r.desc=desc; r.amount=amt; r.day=day; r.type=type; r.category=category;
-    // atualiza os lançamentos PREVISTOS (ainda não pagos/recebidos) desta recorrente
+    r.desc=desc; r.amount=amt; r.day=day; r.type=type; r.category=category; r.startMonth=startMonth;
+    // remove previstos anteriores ao início e atualiza os demais previstos
+    state.tx=state.tx.filter(t=>!(t.recId===r.id && t.pending && mkey(t.date)<startMonth));
     state.tx.forEach(t=>{ if(t.recId===r.id && t.pending){
       t.desc=desc; t.amount=amt; t.type=type; t.category=category;
       const m=mkey(t.date); const last=new Date(+m.slice(0,4), +m.slice(5,7), 0).getDate();
@@ -1071,8 +1095,9 @@ $('#recSave').onclick=()=>{
     }});
     save(); $('#recOverlay').classList.remove('show'); render(); toast('Recorrente atualizada — previstos ajustados ✓');
   } else {
-    state.rec.push({id:uid(), desc, amount:amt, day, type, category, startMonth: state.view});
-    save(); $('#recOverlay').classList.remove('show'); render(); toast('Recorrente criada — entra todo mês como prevista');
+    state.rec.push({id:uid(), desc, amount:amt, day, type, category, startMonth});
+    save(); $('#recOverlay').classList.remove('show'); render();
+    toast(startMonth>todayISO().slice(0,7) ? 'Recorrente criada — começa em '+monthLabel(startMonth).toLowerCase() : 'Recorrente criada — entra todo mês como prevista');
   }
 };
 
