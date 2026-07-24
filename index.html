@@ -614,10 +614,10 @@ const parseMoney = s => { if(typeof s==='number') return s; s=String(s).trim().r
 
 /* ============ categories ============ */
 const CATS = {
-  despesa: ['Mercado','Alimentação','Transporte','Moradia','Contas','Saúde','Lazer','Educação','Compras','Assinaturas','Pets','Outros'],
-  receita: ['Salário','Freela','Vendas','Rendimentos','Outros']
+  despesa: ['Mercado','Alimentação','Transporte','Moradia','Contas','Saúde','Lazer','Educação','Compras','Assinaturas','Pets','Investimentos','Impostos e taxas','Seguros','Empréstimos e parcelas','Cuidados pessoais','Doações','Pix','Outros'],
+  receita: ['Salário','Freela','Vendas','Juros de aplicação','Rendimentos','Benefícios','Reembolso','Pix','Outros']
 };
-const CAT_ICON = {Mercado:'🛒','Alimentação':'🍔',Transporte:'🚗',Moradia:'🏠',Contas:'💡','Saúde':'💊',Lazer:'🎬','Educação':'📚',Compras:'🛍️',Assinaturas:'📺',Pets:'🐶',Outros:'📦','Salário':'💼',Freela:'💻',Vendas:'🤝',Rendimentos:'📈'};
+const CAT_ICON = {Mercado:'🛒','Alimentação':'🍔',Transporte:'🚗',Moradia:'🏠',Contas:'💡','Saúde':'💊',Lazer:'🎬','Educação':'📚',Compras:'🛍️',Assinaturas:'📺',Pets:'🐶',Investimentos:'📊','Impostos e taxas':'🧾',Seguros:'🛡️','Empréstimos e parcelas':'🏦','Cuidados pessoais':'💇','Doações':'🎗️',Pix:'💸',Outros:'📦','Salário':'💼',Freela:'💻',Vendas:'🤝','Juros de aplicação':'🪙',Rendimentos:'📈','Benefícios':'🏛️',Reembolso:'↩️'};
 const SLOTS = ['--s1','--s2','--s3','--s4','--s5','--s6','--s7','--s8'];
 const CAT_SLOT = {}; CATS.despesa.forEach((c,i)=>CAT_SLOT[c]=SLOTS[i%8]);
 const catColor = c => getComputedStyle(document.documentElement).getPropertyValue(CAT_SLOT[c]||'--s8').trim() || '#898781';
@@ -634,10 +634,20 @@ const KW = {
   Compras:['roupa','tenis','tênis','sapato','presente','shopping','eletronico','eletrônico','celular novo','shein','shopee','amazon','mercado livre'],
   Assinaturas:['netflix','spotify','disney','hbo','max','prime','youtube','assinatura','globoplay','icloud','chatgpt','claude'],
   Pets:['pet','racao','ração','veterinario','veterinário','banho e tosa'],
+  Investimentos:['investi','investimento','aporte','apliquei','aplicacao','aplicação','tesouro direto','acoes','ações','fii','cripto','bitcoin','previdencia','previdência'],
+  'Impostos e taxas':['imposto','taxa','tarifa','darf','irpf','multa','cartorio','cartório'],
+  Seguros:['seguro'],
+  'Empréstimos e parcelas':['emprestimo','empréstimo','financiamento','parcela','prestacao','prestação','consorcio','consórcio','fatura'],
+  'Cuidados pessoais':['salao','salão','cabeleireiro','cabelereiro','barbearia','manicure','estetica','estética','cosmetico','cosmético','perfume','maquiagem'],
+  'Doações':['doacao','doação','dizimo','dízimo','oferta','caridade','vaquinha'],
   'Salário':['salario','salário','pagamento','holerite','contracheque'],
   Freela:['freela','freelance','bico','projeto','job'],
   Vendas:['venda','vendi'],
-  Rendimentos:['rendimento','dividendo','juros','cashback','cdb','poupanca','poupança']
+  'Juros de aplicação':['juros de aplicacao','juros de aplicação','juros da aplicacao','juros da aplicação','rendeu'],
+  'Benefícios':['aposentadoria','inss','beneficio','benefício','auxilio','auxílio','bolsa familia','bolsa família'],
+  Reembolso:['reembolso','estorno','devolucao','devolução'],
+  Rendimentos:['rendimento','dividendo','juros','cashback','cdb','poupanca','poupança'],
+  Pix:['pix']
 };
 const INCOME_HINTS = ['recebi','recebido','recebimento','salario','salário','pagamento','freela','freelance','venda','vendi','rendimento','dividendo','cashback','bônus','bonus','13o','13º','pix recebido','entrada','ganhei'];
 
@@ -667,11 +677,11 @@ function parseQuick(text){
   if(!desc) desc = type==='receita'?'Receita':'Despesa';
   desc = desc.charAt(0).toUpperCase()+desc.slice(1);
   // category by keywords
-  let category = null;
-  outer: for(const [cat,kws] of Object.entries(KW)){
-    for(const k of kws){ if(t2.includes(k)){ category=cat; break outer; } }
+  let category = null, _best = 0;
+  for(const [cat,kws] of Object.entries(KW)){
+    for(const k of kws){ if(t2.includes(k) && k.length > _best){ _best = k.length; category = cat; } }
   }
-  if(category && CATS.receita.includes(category)) type='receita';
+  if(category && CATS.receita.includes(category) && !CATS.despesa.includes(category)) type='receita';
   if(!category) category = 'Outros';
   if(type==='receita' && !CATS.receita.includes(category)) category='Outros';
   if(type==='despesa' && !CATS.despesa.includes(category)) category='Outros';
