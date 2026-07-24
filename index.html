@@ -731,14 +731,16 @@ function renderHome(){
   const f = forecast();
   const hv=$('#heroVal'); hv.textContent = fmt(f.val);
   hv.style.color = f.val>=0 ? 'var(--good-text)' : 'var(--critical)';
-  $('#heroLbl').textContent = f.isCurrent ? 'Previsão de sobra no fim do mês' : (state.view>todayISO().slice(0,7)?'Previsto para este mês':'Resultado do mês');
+  $('#heroLbl').textContent = f.isCurrent ? (f.val<0 ? 'Previsão para o fim do mês' : 'Previsão de sobra no fim do mês') : (state.view>todayISO().slice(0,7)?'Previsto para este mês':'Resultado do mês');
   const parts=[];
   if(pInc>0) parts.push(fmt0(pInc)+' a receber');
   if(pOut>0) parts.push(fmt0(pOut)+' a pagar');
-  if(f.isCurrent && f.varProj>0) parts.push('~'+fmt0(f.varProj)+' de gastos do dia a dia até o fim do mês');
+  if(f.isCurrent && f.varProj>0) parts.push('~'+fmt0(f.varProj)+' que você ainda deve gastar no dia a dia');
   if(f.savedNet>0) parts.push(fmt0(f.savedNet)+' guardados em caixinhas');
   if(f.planned>0) parts.push(fmt0(f.planned)+' a guardar (plano mensal das caixinhas)');
-  $('#heroSub').textContent = parts.length? 'Considera: '+parts.join(' · ') : (f.isCurrent?'Baseado no que você já lançou este mês.':'');
+  let heroSub = parts.length? 'Já considerei: '+parts.join(' · ') : (f.isCurrent?'Baseado no que você já lançou este mês.':'');
+  if(f.val<0) heroSub += (heroSub?' — ':'') + (f.isCurrent ? 'Não é valor disponível: é quanto vai FALTAR se nada mudar.' : 'O mês fechou no vermelho.');
+  $('#heroSub').textContent = heroSub;
 
   // caixinhas na home
   const hb=$('#homeBoxes');
