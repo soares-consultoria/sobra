@@ -1161,14 +1161,15 @@ $('#recSave').onclick=()=>{
   if(recEditing){
     const r=state.rec.find(x=>x.id===recEditing); if(!r) return;
     r.desc=desc; r.amount=amt; r.day=day; r.type=type; r.category=category; r.startMonth=startMonth;
-    // remove previstos anteriores ao início e atualiza os demais previstos
-    state.tx=state.tx.filter(t=>!(t.recId===r.id && t.pending && mkey(t.date)<startMonth));
-    state.tx.forEach(t=>{ if(t.recId===r.id && t.pending && !t.override){
+    // meses passados são histórico e não mudam; a edição só afeta previstos deste mês em diante
+    const curM = todayISO().slice(0,7);
+    state.tx=state.tx.filter(t=>!(t.recId===r.id && t.pending && mkey(t.date)>=curM && mkey(t.date)<startMonth));
+    state.tx.forEach(t=>{ if(t.recId===r.id && t.pending && !t.override && mkey(t.date)>=curM){
       t.desc=desc; t.amount=amt; t.type=type; t.category=category;
       const m=mkey(t.date); const last=new Date(+m.slice(0,4), +m.slice(5,7), 0).getDate();
       t.date=m+'-'+String(Math.min(day,last)).padStart(2,'0');
     }});
-    save(); $('#recOverlay').classList.remove('show'); render(); toast('Recorrente atualizada — previstos ajustados ✓');
+    save(); $('#recOverlay').classList.remove('show'); render(); toast('Recorrente atualizada — vale deste mês em diante ✓');
   } else {
     state.rec.push({id:uid(), desc, amount:amt, day, type, category, startMonth});
     save(); $('#recOverlay').classList.remove('show'); render();
