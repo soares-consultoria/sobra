@@ -1150,7 +1150,9 @@ document.addEventListener('click', e=>{
 /* ============ tx modal ============ */
 let editId=null;
 function fillCatSelect(sel, type, current){
-  sel.innerHTML = CATS[type].map(c=>`<option ${c===current?'selected':''}>${c}</option>`).join('');
+  /* ordem alfabética, com "Outros" sempre por último */
+  const cats = CATS[type].filter(c=>c!=='Outros').sort((a,b)=>a.localeCompare(b,'pt-BR')).concat('Outros');
+  sel.innerHTML = cats.map(c=>`<option value="${c}" ${c===current?'selected':''}>${CAT_ICON[c]?CAT_ICON[c]+' ':''}${c}</option>`).join('');
 }
 function openTx(id){
   const t=state.tx.find(x=>x.id===id); if(!t) return;
