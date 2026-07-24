@@ -487,6 +487,7 @@ nav.bottom button svg{width:22px; height:22px}
     <h3 id="movTitle">Guardar na caixinha</h3>
     <div class="f" id="movBoxPickWrap"><label>Caixinha</label><select id="movBoxPick"></select></div>
     <div class="f"><label>Valor (R$)</label><input id="movAmt" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <div class="f" id="movAllWrap" style="display:none"><button type="button" class="ghost" id="movAll" style="width:100%">Resgatar tudo</button></div>
     <div class="f" id="movExtWrap"><label><input type="checkbox" id="movExternal" style="width:auto;margin-right:6px">💼 Recurso já existente (não desconta da sobra deste mês)</label></div>
     <div class="hint" id="movHint" style="margin:0 0 4px"></div>
     <div class="actions">
@@ -958,6 +959,12 @@ function openMov(boxId, preset, dir){
     $('#movBoxPick').innerHTML=state.boxes.map(b=>`<option value="${b.id}">${boxIcon(b.name)} ${esc(b.name)}</option>`).join('');
   }
   $('#movAmt').value = preset? preset.toLocaleString('pt-BR',{minimumFractionDigits:2}) : '';
+  const bal = (dir<0 && boxId)? boxBalance(boxId) : 0;
+  if(dir<0 && boxId && bal>0.004){
+    $('#movAllWrap').style.display='';
+    $('#movAll').textContent='Resgatar tudo ('+fmt(bal)+')';
+    $('#movAll').onclick=()=>{ $('#movAmt').value = bal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+  } else { $('#movAllWrap').style.display='none'; }
   $('#movOverlay').classList.add('show');
 }
 $('#movCancel').onclick=()=>$('#movOverlay').classList.remove('show');
