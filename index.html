@@ -499,7 +499,7 @@ nav.bottom button svg{width:22px; height:22px}
     <div class="f" id="movBoxPickWrap"><label>Caixinha</label><select id="movBoxPick"></select></div>
     <div class="f"><label>Valor (R$)</label><input id="movAmt" type="text" inputmode="decimal" placeholder="0,00"></div>
     <div class="f" id="movAllWrap" style="display:none"><button type="button" class="ghost" id="movAll" style="width:100%">Resgatar tudo</button></div>
-    <div class="f" id="movExtWrap"><label><input type="checkbox" id="movExternal" style="width:auto;margin-right:6px">💼 Recurso já existente (não desconta da sobra deste mês)</label></div>
+    <div class="f" id="movExtWrap"><label><input type="checkbox" id="movExternal" style="width:auto;margin-right:6px"><span id="movExtLabel">💼 Recurso já existente (não desconta da sobra deste mês)</span></label></div>
     <div class="hint" id="movHint" style="margin:0 0 4px"></div>
     <div class="actions">
       <button class="ghost" id="movCancel">Cancelar</button>
@@ -1040,8 +1040,11 @@ $('#boxDel').onclick=()=>{ if(confirm('Excluir esta caixinha? O histórico de gu
 function openMov(boxId, preset, dir){
   movBoxId=boxId; movDir=dir;
   $('#movTitle').textContent = dir>0? 'Guardar na caixinha' : 'Resgatar da caixinha';
-  $('#movHint').textContent = dir>0? 'O valor sai da sobra livre do mês e fica guardado com propósito.' : 'O valor volta para a sobra livre do mês.';
-  $('#movExtWrap').style.display = dir>0? '' : 'none';
+  $('#movHint').textContent = dir>0? 'O valor sai da sobra livre do mês e fica guardado com propósito.' : 'O valor volta para a sobra livre do mês — a não ser que você marque "só reorganizando".';
+  $('#movExtWrap').style.display='';
+  $('#movExtLabel').textContent = dir>0
+    ? '💼 Recurso já existente (não desconta da sobra deste mês)'
+    : '🔄 Só reorganizando (o valor não volta para a sobra deste mês)';
   $('#movExternal').checked=false;
   const wrap=$('#movBoxPickWrap');
   if(boxId){ wrap.style.display='none'; }
@@ -1065,13 +1068,13 @@ $('#movSave').onclick=()=>{
   if(amt===null||amt<=0){ toast('Informe um valor válido'); return; }
   const id=movBoxId || $('#movBoxPick').value;
   if(movDir<0 && amt>boxBalance(id)+0.009){ toast('A caixinha não tem esse valor guardado'); return; }
-  const ext = movDir>0 && $('#movExternal').checked;
+  const ext = $('#movExternal').checked;
   const mov={id:uid(), boxId:id, amount:movDir*amt, date:todayISO()};
   if(ext) mov.external=true;
   state.boxmov.push(mov);
   save(); $('#movOverlay').classList.remove('show'); render();
   const b=state.boxes.find(x=>x.id===id);
-  toast(movDir>0? fmt(amt)+(ext?' adicionados como recurso já existente em ':' guardados em ')+(b?b.name:'caixinha')+' ✓' : fmt(amt)+' resgatados ✓');
+  toast(movDir>0? fmt(amt)+(ext?' adicionados como recurso já existente em ':' guardados em ')+(b?b.name:'caixinha')+' ✓' : fmt(amt)+(ext?' resgatados (só reorganização) ✓':' resgatados ✓'));
 };
 
 function esc(s){ return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
@@ -1414,6 +1417,7 @@ function buildHelp(){
 <p>Defina um limite de gasto por categoria (ex.: R$ 800 para Mercado). A barrinha mostra quanto do limite você já usou no mês — e avisa quando está chegando perto.</p>
 <h4>🐷 Caixinhas</h4>
 <p>Guarde dinheiro com propósito: reserva de emergência, férias, viagem… Você pode <b>guardar</b> parte da sobra do mês, informar um valor que <b>já tinha guardado</b> antes (não desconta da sobra), e <b>resgatar</b> quando precisar — inclusive tudo de uma vez. Com uma <b>meta</b> e um valor mensal, o Sobra mostra quando você chega lá.</p>
+<p><b>Dica importante:</b> ao resgatar, o valor volta para a sobra do mês (é dinheiro para gastar). Se você está apenas <b>mudando dinheiro de lugar</b> entre caixinhas, marque <b>"🔄 Só reorganizando"</b> — assim a previsão do mês não é afetada.</p>
 <h4>👨‍👩‍👧 Acesso familiar</h4>
 <p>Compartilhe seu orçamento com 1 pessoa da família: cada um entra com seu próprio e-mail e senha, e os dois veem e lançam no mesmo orçamento. Quem foi convidado pode alternar entre o orçamento da família e o individual quando quiser.</p>
 <h4>🔐 Sua conta</h4>
