@@ -382,6 +382,7 @@ nav.bottom button svg{width:22px; height:22px}
       <div class="setrow"><div><div class="t">Exportar extrato (CSV)</div><div class="s">Abre no Excel / Google Planilhas</div></div><button class="act" id="expCsv">Exportar</button></div>
       <div class="setrow"><div><div class="t">Importar backup</div><div class="s">Restaura um arquivo JSON exportado</div></div><button class="act" id="impJson">Importar</button></div>
       <div class="setrow"><div><div class="t">Apagar tudo</div><div class="s">Remove todos os dados deste dispositivo</div></div><button class="act red" id="wipe">Apagar</button></div>
+      <div class="setrow" id="rowFam" style="display:none"><div><div class="t">👨‍👩‍👧 Acesso familiar</div><div class="s" id="famStatus">Compartilhe o orçamento com 1 pessoa da família</div></div><button class="act" id="famBtn">Gerenciar</button></div>
       <div class="setrow" id="rowPwd" style="display:none"><div><div class="t">Definir / alterar senha</div><div class="s">Para entrar sem depender do link por e-mail</div></div><button class="act" id="pwdBtn">Definir</button></div>
       <div class="setrow" id="rowLogout" style="display:none"><div><div class="t">Sair da conta</div><div class="s" id="logoutMail"></div></div><button class="act" id="logoutBtn">Sair</button></div>
     </div>
@@ -506,6 +507,28 @@ nav.bottom button svg{width:22px; height:22px}
     <div class="actions">
       <button class="ghost" id="pwdCancel">Cancelar</button>
       <button class="primary" id="pwdSave">Salvar senha</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="famOverlay">
+  <div class="sheet">
+    <h3>👨‍👩‍👧 Acesso familiar</h3>
+    <div id="famOwnerNew">
+      <div class="hint" style="margin:0 0 10px">Compartilhe seu orçamento com <b>1 pessoa</b> da família (limite atual: 2 por conta). Ela precisa já ter a própria conta no Sobra — depois, vocês dois veem e editam o mesmo orçamento.</div>
+      <div class="f"><label>E-mail do familiar</label><input id="famEmail" type="email" inputmode="email" autocomplete="off" placeholder="familiar@exemplo.com"></div>
+    </div>
+    <div id="famOwnerHas" style="display:none">
+      <div class="hint" style="margin:0 0 10px">Seu orçamento está compartilhado com <b id="famWith"></b>. Vocês dois veem e editam os mesmos dados.</div>
+    </div>
+    <div id="famMemberBox" style="display:none">
+      <div class="hint" style="margin:0 0 10px"><b id="famOwnerMail"></b> compartilhou o orçamento da família com você. Escolha qual orçamento usar neste dispositivo:</div>
+      <div class="seg" id="famModeSeg" style="margin-bottom:12px"><button data-fm="family">👨‍👩‍👧 Familiar</button><button data-fm="own">👤 Meu individual</button></div>
+    </div>
+    <div class="actions">
+      <button class="ghost" id="famCancel">Fechar</button>
+      <button class="primary" id="famShare">Compartilhar</button>
+      <button class="danger" id="famUnshare" style="display:none">Remover acesso</button>
     </div>
   </div>
 </div>
@@ -662,8 +685,9 @@ const SUPA_KEY='sb_publishable_XCO02ELxRKJtn9FSiSKz5A_1gU8CSjc';
 const CONFIGURED = SUPA_URL.indexOf('https')===0;
 const CLOUD = CONFIGURED && !!window.supabase;
 let sb=null, user=null, syncTimer=null, dirty=false;
+let dataOwner=null, shareInfo=null; /* acesso familiar: dataOwner = dono do orçamento em uso */
 let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], theme:null, view: todayISO().slice(0,7) };
-function lsKey(){ return user ? LS+'.'+user.id : LS; }
+function lsKey(){ const id=dataOwner||(user&&user.id); return id ? LS+'.'+id : LS; }
 function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov}; }
 function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; }
 function load(){ try{ const s=JSON.parse(localStorage.getItem(lsKey())); if(s) adopt(s); }catch(e){} }
@@ -674,7 +698,7 @@ function save(){
 async function pushCloud(){
   if(!(CLOUD && user)) return;
   try{
-    const {error} = await sb.from('app_state').upsert({ user_id:user.id,
+    const {error} = await sb.from('app_state').upsert({ user_id:(dataOwner||user.id),
       data:snapshot(), updated_at:new Date().toISOString() });
     if(error) throw error;
     dirty=false;
@@ -1302,11 +1326,22 @@ if(CLOUD){
 }
 async function enterApp(session){
   user = session.user;
+  dataOwner = user.id;
   hideAuth();
   const rl=$('#rowLogout'); if(rl){ rl.style.display=''; $('#logoutMail').textContent=user.email||''; }
   const rp=$('#rowPwd'); if(rp) rp.style.display='';
   try{
-    const {data, error} = await sb.from('app_state').select('data').eq('user_id', user.id).maybeSingle();
+    const {data:sh} = await sb.rpc('my_share');
+    if(sh && sh.length){
+      shareInfo=sh[0];
+      /* familiar convidado escolhe entre o orçamento da família e o individual dele */
+      const pref = localStorage.getItem('sobra.mode.'+user.id) || 'family';
+      if(shareInfo.role==='member' && pref!=='own') dataOwner=shareInfo.owner_id;
+    }
+  }catch(e){}
+  famUI();
+  try{
+    const {data, error} = await sb.from('app_state').select('data').eq('user_id', dataOwner).maybeSingle();
     if(error) throw error;
     if(data && data.data && Array.isArray(data.data.tx)){
       adopt(data.data);
@@ -1323,6 +1358,64 @@ async function enterApp(session){
   }catch(e){ load(); toast('⚠️ Nuvem indisponível — usando dados deste dispositivo'); }
   render();
 }
+/* ============ acesso familiar ============ */
+function famUI(){
+  const row=$('#rowFam'); if(!row || !user) return;
+  row.style.display='';
+  const usingFamily = shareInfo && shareInfo.role==='member' && dataOwner!==user.id;
+  if(shareInfo && shareInfo.role==='member')
+    $('#famStatus').textContent = usingFamily ? 'Usando o orçamento familiar de '+shareInfo.other_email : 'Usando seu orçamento individual';
+  else if(shareInfo)
+    $('#famStatus').textContent = 'Compartilhado com '+shareInfo.other_email;
+  else
+    $('#famStatus').textContent = 'Compartilhe o orçamento com 1 pessoa da família';
+}
+$('#famBtn') && ($('#famBtn').onclick=()=>{
+  const isMember = shareInfo && shareInfo.role==='member';
+  const isOwner = shareInfo && shareInfo.role==='owner';
+  $('#famOwnerNew').style.display = (!shareInfo) ? '' : 'none';
+  $('#famOwnerHas').style.display = isOwner ? '' : 'none';
+  $('#famMemberBox').style.display = isMember ? '' : 'none';
+  $('#famShare').style.display = (!shareInfo) ? '' : 'none';
+  $('#famUnshare').style.display = isOwner ? '' : 'none';
+  if(isOwner) $('#famWith').textContent = shareInfo.other_email;
+  if(isMember){
+    $('#famOwnerMail').textContent = shareInfo.other_email;
+    const mode = dataOwner===user.id ? 'own' : 'family';
+    $$('#famModeSeg button').forEach(b=>b.classList.toggle('on', b.dataset.fm===mode));
+  }
+  $('#famOverlay').classList.add('show');
+});
+$$('#famModeSeg button').forEach(b=>b.onclick=()=>{
+  const mode=b.dataset.fm;
+  const cur = dataOwner===user.id ? 'own' : 'family';
+  if(mode===cur) return;
+  localStorage.setItem('sobra.mode.'+user.id, mode);
+  toast(mode==='family' ? 'Trocando para o orçamento familiar…' : 'Trocando para o seu orçamento…');
+  setTimeout(()=>location.reload(), 400);
+});
+$('#famCancel').onclick=()=>$('#famOverlay').classList.remove('show');
+$('#famShare').onclick=async ()=>{
+  const email=$('#famEmail').value.trim().toLowerCase();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ toast('Digite um e-mail válido'); return; }
+  if(user && email===(user.email||'').toLowerCase()){ toast('Use o e-mail de outra pessoa 🙂'); return; }
+  const {data, error} = await sb.rpc('share_budget', { p_email: email });
+  if(error){ toast('Não foi possível compartilhar: '+error.message); return; }
+  if(data==='not_found'){ toast('Este e-mail ainda não tem conta no Sobra — peça para a pessoa criar a conta primeiro'); return; }
+  if(data==='self'){ toast('Use o e-mail de outra pessoa 🙂'); return; }
+  if(data==='busy'){ toast('Essa pessoa já participa de outro orçamento compartilhado'); return; }
+  if(data==='in_share'){ toast('Você já usa um orçamento compartilhado — saia dele antes de compartilhar o seu'); return; }
+  shareInfo={ role:'owner', other_email:email, owner_id:user.id };
+  famUI(); $('#famOverlay').classList.remove('show');
+  toast('Orçamento compartilhado com '+email+' ✓');
+};
+$('#famUnshare').onclick=async ()=>{
+  if(!confirm('Remover o acesso de '+(shareInfo?shareInfo.other_email:'')+' ao seu orçamento?')) return;
+  const {error} = await sb.rpc('unshare_budget');
+  if(error){ toast('Não foi possível remover: '+error.message); return; }
+  shareInfo=null; famUI(); $('#famOverlay').classList.remove('show');
+  toast('Acesso familiar removido ✓');
+};
 $('#logoutBtn') && ($('#logoutBtn').onclick=async ()=>{ if(confirm('Sair da conta neste dispositivo?')){ await sb.auth.signOut(); } });
 $('#pwdBtn') && ($('#pwdBtn').onclick=()=>{ $('#pwdNew').value=''; $('#pwdNew2').value=''; $('#pwdOverlay').classList.add('show'); });
 $('#pwdCancel').onclick=()=>$('#pwdOverlay').classList.remove('show');
