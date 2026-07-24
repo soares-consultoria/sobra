@@ -385,7 +385,7 @@ nav.bottom button svg{width:22px; height:22px}
       <div class="setrow" id="rowPwd" style="display:none"><div><div class="t">Definir / alterar senha</div><div class="s">Para entrar sem depender do link por e-mail</div></div><button class="act" id="pwdBtn">Definir</button></div>
       <div class="setrow" id="rowLogout" style="display:none"><div><div class="t">Sair da conta</div><div class="s" id="logoutMail"></div></div><button class="act" id="logoutBtn">Sair</button></div>
     </div>
-    <div class="hint">Seus dados ficam <b>somente neste dispositivo</b> — nada é enviado para servidores. Faça backups de vez em quando. 💡 No celular, use “Adicionar à tela de início” para instalar como app.</div>
+    <div class="hint" id="storageHint">Seus dados são salvos <b>na nuvem, na sua conta</b> (banco Postgres com acesso restrito ao seu login) e sincronizam automaticamente entre celular e computador. O backup exportado acima é uma cópia extra opcional. 💡 No celular, use “Adicionar à tela de início” para instalar como app.</div>
     <input type="file" id="impFile" accept="application/json" style="display:none">
   </section>
 </main>
