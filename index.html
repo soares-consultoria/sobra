@@ -614,10 +614,10 @@ const parseMoney = s => { if(typeof s==='number') return s; s=String(s).trim().r
 
 /* ============ categories ============ */
 const CATS = {
-  despesa: ['Mercado','Alimentação','Transporte','Moradia','Contas','Saúde','Lazer','Educação','Compras','Assinaturas','Pets','Investimentos','Impostos e taxas','Seguros','Empréstimos e parcelas','Cuidados pessoais','Doações','Pix','Outros'],
+  despesa: ['Mercado','Alimentação','Transporte','Moradia','Contas','Saúde','Lazer','Educação','Compras','Assinaturas','Pets','Investimentos','Impostos e taxas','Seguros','Empréstimos e parcelas','Cuidados pessoais','Doações','Cartão de crédito','Pix','Outros'],
   receita: ['Salário','Freela','Vendas','Juros de aplicação','Rendimentos','Benefícios','Reembolso','Pix','Outros']
 };
-const CAT_ICON = {Mercado:'🛒','Alimentação':'🍔',Transporte:'🚗',Moradia:'🏠',Contas:'💡','Saúde':'💊',Lazer:'🎬','Educação':'📚',Compras:'🛍️',Assinaturas:'📺',Pets:'🐶',Investimentos:'📊','Impostos e taxas':'🧾',Seguros:'🛡️','Empréstimos e parcelas':'🏦','Cuidados pessoais':'💇','Doações':'🎗️',Pix:'💸',Outros:'📦','Salário':'💼',Freela:'💻',Vendas:'🤝','Juros de aplicação':'🪙',Rendimentos:'📈','Benefícios':'🏛️',Reembolso:'↩️'};
+const CAT_ICON = {Mercado:'🛒','Alimentação':'🍔',Transporte:'🚗',Moradia:'🏠',Contas:'💡','Saúde':'💊',Lazer:'🎬','Educação':'📚',Compras:'🛍️',Assinaturas:'📺',Pets:'🐶',Investimentos:'📊','Impostos e taxas':'🧾',Seguros:'🛡️','Empréstimos e parcelas':'🏦','Cuidados pessoais':'💇','Doações':'🎗️','Cartão de crédito':'💳',Pix:'💸',Outros:'📦','Salário':'💼',Freela:'💻',Vendas:'🤝','Juros de aplicação':'🪙',Rendimentos:'📈','Benefícios':'🏛️',Reembolso:'↩️'};
 const SLOTS = ['--s1','--s2','--s3','--s4','--s5','--s6','--s7','--s8'];
 const CAT_SLOT = {}; CATS.despesa.forEach((c,i)=>CAT_SLOT[c]=SLOTS[i%8]);
 const catColor = c => getComputedStyle(document.documentElement).getPropertyValue(CAT_SLOT[c]||'--s8').trim() || '#898781';
@@ -637,7 +637,8 @@ const KW = {
   Investimentos:['investi','investimento','aporte','apliquei','aplicacao','aplicação','tesouro direto','acoes','ações','fii','cripto','bitcoin','previdencia','previdência'],
   'Impostos e taxas':['imposto','taxa','tarifa','darf','irpf','multa','cartorio','cartório'],
   Seguros:['seguro'],
-  'Empréstimos e parcelas':['emprestimo','empréstimo','financiamento','parcela','prestacao','prestação','consorcio','consórcio','fatura'],
+  'Empréstimos e parcelas':['emprestimo','empréstimo','financiamento','parcela','prestacao','prestação','consorcio','consórcio'],
+  'Cartão de crédito':['cartao de credito','cartão de crédito','fatura do cartao','fatura do cartão','fatura','nubank','no credito','no crédito','anuidade'],
   'Cuidados pessoais':['salao','salão','cabeleireiro','cabelereiro','barbearia','manicure','estetica','estética','cosmetico','cosmético','perfume','maquiagem'],
   'Doações':['doacao','doação','dizimo','dízimo','oferta','caridade','vaquinha'],
   'Salário':['salario','salário','pagamento','holerite','contracheque'],
