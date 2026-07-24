@@ -520,11 +520,13 @@ nav.bottom button svg{width:22px; height:22px}
     <p style="color:var(--ink2); font-size:14.5px; line-height:1.55; margin-bottom:24px">Seu orçamento em 3 segundos, agora com seus dados guardados com segurança na nuvem e sincronizados entre seus dispositivos.</p>
     <div class="card">
       <div id="authStep1">
+        <div class="seg" id="authMode" style="margin-bottom:14px"><button data-m="login" class="on">Entrar</button><button data-m="signup">Criar conta</button></div>
         <div class="f"><label>Seu e-mail</label><input id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="voce@exemplo.com"></div>
         <div class="f"><label>Senha</label><input id="authPass" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+        <div class="f" id="authPass2Wrap" style="display:none"><label>Repetir a senha</label><input id="authPass2" type="password" autocomplete="new-password" placeholder="••••••••"></div>
         <button id="authLogin" style="width:100%; background:var(--accent); color:#fff; border-radius:12px; padding:14px; font-weight:700; font-size:15px">Entrar</button>
-        <button id="authSend" style="width:100%; margin-top:8px; background:var(--surface2); color:var(--ink2); border-radius:12px; padding:13px; font-weight:600; font-size:14px">Primeiro acesso / esqueci a senha — receber link por e-mail</button>
-        <div class="hint" style="margin-top:10px">No primeiro acesso, entre pelo link do e-mail e depois defina sua senha em <b>Ajustes</b>. Nos próximos, é só e-mail e senha — e o app mantém você conectado neste dispositivo.</div>
+        <button id="authSend" style="width:100%; margin-top:8px; color:var(--ink2); padding:11px; font-size:13.5px; text-decoration:underline">Esqueci a senha — receber link por e-mail</button>
+        <div class="hint" id="authHint" style="margin-top:10px">Entre com seu e-mail e senha — o app mantém você conectado neste dispositivo. Primeira vez aqui? Toque em <b>Criar conta</b>.</div>
       </div>
       <div id="authStep2" style="display:none">
         <div class="hint" style="margin:0 0 10px">Enviamos um e-mail para <b id="authSentTo"></b>. <b>Toque no link do e-mail</b> para entrar. Se o e-mail trouxer um código, você também pode digitá-lo abaixo:</div>
@@ -1243,16 +1245,41 @@ $('#wipe').onclick=()=>{ if(confirm('Apagar TODOS os dados'+(CLOUD&&user?' (dest
 function authMsg(t){ const m=$('#authMsg'); if(t){ m.style.display=''; m.innerHTML=t; } else m.style.display='none'; }
 function showAuth(){ $('#authScreen').style.display=''; }
 function hideAuth(){ $('#authScreen').style.display='none'; }
-let authEmail='';
+let authEmail='', authMode='login';
 if(CLOUD){
+  $$('#authMode button').forEach(b=>b.onclick=()=>{
+    authMode=b.dataset.m;
+    $$('#authMode button').forEach(x=>x.classList.toggle('on', x===b));
+    $('#authPass2Wrap').style.display = authMode==='signup' ? '' : 'none';
+    $('#authLogin').textContent = authMode==='signup' ? 'Criar minha conta' : 'Entrar';
+    $('#authSend').style.display = authMode==='signup' ? 'none' : '';
+    $('#authPass').setAttribute('autocomplete', authMode==='signup' ? 'new-password' : 'current-password');
+    $('#authHint').innerHTML = authMode==='signup'
+      ? 'Escolha uma senha com pelo menos 8 caracteres. Sua conta é criada na hora e você já entra direto.'
+      : 'Entre com seu e-mail e senha — o app mantém você conectado neste dispositivo. Primeira vez aqui? Toque em <b>Criar conta</b>.';
+    authMsg('');
+  });
   $('#authLogin').onclick=async ()=>{
     const email=$('#authEmail').value.trim().toLowerCase();
     const password=$('#authPass').value;
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ authMsg('Digite um e-mail válido.'); return; }
-    if(!password){ authMsg('Digite sua senha — ou use o link por e-mail no primeiro acesso.'); return; }
+    if(authMode==='signup'){
+      if(password.length<8){ authMsg('A senha precisa ter pelo menos 8 caracteres.'); return; }
+      if(password!==$('#authPass2').value){ authMsg('As senhas não conferem.'); return; }
+      authMsg('Criando sua conta…');
+      const {data, error} = await sb.auth.signUp({ email, password });
+      if(error){
+        if(/already registered|already exists/i.test(error.message)) authMsg('Este e-mail já tem conta. Toque em <b>Entrar</b> — ou use "Esqueci a senha".');
+        else authMsg('Não consegui criar a conta: '+esc(error.message));
+        return;
+      }
+      if(!data.session){ authMsg('Conta criada! Enviamos um e-mail de confirmação para <b>'+esc(email)+'</b> — toque no link para entrar.'); }
+      return; // com sessão, o listener de auth entra no app automaticamente
+    }
+    if(!password){ authMsg('Digite sua senha — ou crie sua conta em <b>Criar conta</b>.'); return; }
     authMsg('Entrando…');
     const {error} = await sb.auth.signInWithPassword({ email, password });
-    if(error){ authMsg('E-mail ou senha incorretos. Se é seu primeiro acesso ou esqueceu a senha, use o botão de link por e-mail.'); }
+    if(error){ authMsg('E-mail ou senha incorretos. Primeira vez aqui? Use <b>Criar conta</b>. Esqueceu a senha? Use o link abaixo.'); }
   };
   $('#authPass').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#authLogin').click(); });
   $('#authSend').onclick=async ()=>{
