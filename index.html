@@ -206,6 +206,15 @@ nav.bottom button svg{width:22px; height:22px}
   max-height:88dvh; overflow-y:auto;
 }
 .sheet h3{font-size:17px; margin-bottom:14px}
+/* ajuda */
+.helpbody{font-size:13.5px; color:var(--ink2); line-height:1.62}
+.helpbody h4{color:var(--ink); font-size:14.5px; margin:16px 0 6px}
+.helpbody h4:first-child{margin-top:0}
+.helpbody p{margin:0 0 8px}
+.helpbody code{background:var(--surface2); border-radius:6px; padding:1px 6px; font-size:12.5px}
+.helpbody table{width:100%; border-collapse:collapse; margin:6px 0 10px}
+.helpbody td{padding:6px; border-top:1px solid var(--ring); vertical-align:top; font-size:12.5px}
+.helpbody td:first-child{white-space:nowrap; font-weight:600; color:var(--ink)}
 .f{margin-bottom:12px}
 .f label{display:block; font-size:12.5px; color:var(--ink2); margin-bottom:5px; font-weight:600}
 .f input,.f select{
@@ -378,6 +387,7 @@ nav.bottom button svg{width:22px; height:22px}
   <!-- AJUSTES -->
   <section class="view" id="v-set">
     <div class="card">
+      <div class="setrow"><div><div class="t">❓ Ajuda — como usar o Sobra</div><div class="s">Lançamento rápido, palavras-chave, previsão, caixinhas e mais</div></div><button class="act" id="helpBtn">Abrir</button></div>
       <div class="setrow"><div><div class="t">Exportar dados (JSON)</div><div class="s">Backup completo para guardar ou migrar</div></div><button class="act" id="expJson">Exportar</button></div>
       <div class="setrow"><div><div class="t">Exportar extrato (CSV)</div><div class="s">Abre no Excel / Google Planilhas</div></div><button class="act" id="expCsv">Exportar</button></div>
       <div class="setrow"><div><div class="t">Importar backup</div><div class="s">Restaura um arquivo JSON exportado</div></div><button class="act" id="impJson">Importar</button></div>
@@ -508,6 +518,14 @@ nav.bottom button svg{width:22px; height:22px}
       <button class="ghost" id="pwdCancel">Cancelar</button>
       <button class="primary" id="pwdSave">Salvar senha</button>
     </div>
+  </div>
+</div>
+
+<div class="overlay" id="helpOverlay">
+  <div class="sheet">
+    <h3>❓ Como usar o Sobra</h3>
+    <div class="helpbody" id="helpBody"></div>
+    <div class="actions"><button class="primary" id="helpClose" style="width:100%">Entendi</button></div>
   </div>
 </div>
 
@@ -1369,6 +1387,39 @@ async function enterApp(session){
   }catch(e){ load(); toast('⚠️ Nuvem indisponível — usando dados deste dispositivo'); }
   render();
 }
+/* ============ ajuda ============ */
+function buildHelp(){
+  const linhas = Object.entries(KW).map(([cat,kws])=>{
+    const ic = CAT_ICON[cat]||'📦';
+    return '<tr><td>'+ic+' '+esc(cat)+'</td><td>'+kws.slice(0,5).map(k=>'<code>'+esc(k)+'</code>').join(' ')+'</td></tr>';
+  }).join('');
+  return `
+<h4>⚡ Lançamento rápido — escreva como você fala</h4>
+<p>Na tela inicial, digite a despesa ou receita numa frase curta com o valor. O Sobra entende sozinho o valor, o tipo e a categoria. Exemplos:</p>
+<p><code>mercado 250</code> · <code>uber 23,50</code> · <code>luz 180 ontem</code> · <code>recebi salário 6.000</code> · <code>fatura do cartão 2.400 dia 10</code></p>
+<p><b>Valores:</b> pode escrever <code>1.500</code>, <code>1500</code> ou <code>1.500,00</code> — tudo funciona.<br>
+<b>Datas:</b> se não disser nada, vale hoje. Pode usar <code>ontem</code> ou <code>dia 10</code>.<br>
+<b>Receitas:</b> comece com <code>recebi</code> (ou use palavras como salário, freela, rendimento).</p>
+<h4>🏷️ Palavras que o Sobra reconhece</h4>
+<p>A categoria é escolhida pela palavra mais parecida na frase. Alguns exemplos do que cada categoria entende:</p>
+<table>${linhas}</table>
+<p>Se nenhuma palavra combinar, o lançamento vai para <b>📦 Outros</b> — é só tocar nele no Extrato e trocar a categoria. Nada se perde.</p>
+<h4>🔮 Previsão de sobra</h4>
+<p>O cartão grande da tela inicial mostra como o mês deve terminar: o que você já recebeu e gastou, menos as contas que ainda vão vencer e uma estimativa dos seus gastos do dia a dia até o fim do mês. Se aparecer negativo em vermelho, é o quanto vai <b>faltar</b> se nada mudar — não é dinheiro disponível.</p>
+<h4>🔁 Recorrentes</h4>
+<p>Cadastre o que se repete todo mês (aluguel, salário, internet). Elas entram automaticamente como <b>previstas</b> em cada mês — quando pagar ou receber, toque nelas e confirme. Se o valor mudar, edite a recorrente: a mudança vale <b>deste mês em diante</b>, os meses passados ficam como estavam. E se num mês o valor vier diferente, dá para ajustar só aquele mês.</p>
+<h4>✉️ Envelopes</h4>
+<p>Defina um limite de gasto por categoria (ex.: R$ 800 para Mercado). A barrinha mostra quanto do limite você já usou no mês — e avisa quando está chegando perto.</p>
+<h4>🐷 Caixinhas</h4>
+<p>Guarde dinheiro com propósito: reserva de emergência, férias, viagem… Você pode <b>guardar</b> parte da sobra do mês, informar um valor que <b>já tinha guardado</b> antes (não desconta da sobra), e <b>resgatar</b> quando precisar — inclusive tudo de uma vez. Com uma <b>meta</b> e um valor mensal, o Sobra mostra quando você chega lá.</p>
+<h4>👨‍👩‍👧 Acesso familiar</h4>
+<p>Compartilhe seu orçamento com 1 pessoa da família: cada um entra com seu próprio e-mail e senha, e os dois veem e lançam no mesmo orçamento. Quem foi convidado pode alternar entre o orçamento da família e o individual quando quiser.</p>
+<h4>🔐 Sua conta</h4>
+<p>Seus dados ficam guardados com segurança na sua conta e aparecem em qualquer aparelho em que você entrar. Aqui em Ajustes você também define sua senha, exporta uma cópia dos seus dados e sai da conta. 💡 No celular, use "Adicionar à tela de início" para o Sobra virar um app.</p>`;
+}
+$('#helpBtn').onclick=()=>{ const b=$('#helpBody'); if(!b.innerHTML) b.innerHTML=buildHelp(); $('#helpOverlay').classList.add('show'); };
+$('#helpClose').onclick=()=>$('#helpOverlay').classList.remove('show');
+
 /* ============ acesso familiar ============ */
 function famUI(){
   const row=$('#rowFam'); if(!row || !user) return;
