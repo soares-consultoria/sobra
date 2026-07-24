@@ -385,7 +385,7 @@ nav.bottom button svg{width:22px; height:22px}
       <div class="setrow" id="rowPwd" style="display:none"><div><div class="t">Definir / alterar senha</div><div class="s">Para entrar sem depender do link por e-mail</div></div><button class="act" id="pwdBtn">Definir</button></div>
       <div class="setrow" id="rowLogout" style="display:none"><div><div class="t">Sair da conta</div><div class="s" id="logoutMail"></div></div><button class="act" id="logoutBtn">Sair</button></div>
     </div>
-    <div class="hint" id="storageHint">Seus dados são salvos <b>na nuvem, na sua conta</b> (banco Postgres com acesso restrito ao seu login) e sincronizam automaticamente entre celular e computador. O backup exportado acima é uma cópia extra opcional. 💡 No celular, use “Adicionar à tela de início” para instalar como app.</div>
+    <div class="hint" id="storageHint">Seus dados ficam guardados com segurança <b>na sua conta</b> — só você acessa, e tudo aparece automaticamente em qualquer aparelho em que você entrar. 💡 No celular, use “Adicionar à tela de início” para instalar como app.</div>
     <input type="file" id="impFile" accept="application/json" style="display:none">
   </section>
 </main>
@@ -545,6 +545,24 @@ nav.bottom button svg{width:22px; height:22px}
 /* ============ helpers ============ */
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
+/* trava a rolagem do fundo enquanto uma janela (sheet) está aberta —
+   evita o "vão" rolável em branco que o teclado do iOS deixa ao fechar */
+let _lockY=null;
+function _syncScrollLock(){
+  const open = $$('.overlay').some(o=>o.classList.contains('show'));
+  if(open && _lockY===null){
+    _lockY = window.scrollY||0;
+    document.body.style.position='fixed';
+    document.body.style.top=(-_lockY)+'px';
+    document.body.style.left='0'; document.body.style.right='0'; document.body.style.width='100%';
+  } else if(!open && _lockY!==null){
+    const y=_lockY; _lockY=null;
+    document.body.style.position=''; document.body.style.top='';
+    document.body.style.left=''; document.body.style.right=''; document.body.style.width='';
+    window.scrollTo(0,y);
+  }
+}
+(()=>{ const mo=new MutationObserver(_syncScrollLock); $$('.overlay').forEach(o=>mo.observe(o,{attributes:true,attributeFilter:['class']})); })();
 const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
 const fmt = n => (n<0?'-':'') + 'R$ ' + Math.abs(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmt0 = n => (n<0?'-':'') + 'R$ ' + Math.abs(n).toLocaleString('pt-BR',{maximumFractionDigits:0});
