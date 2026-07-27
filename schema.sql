@@ -79,3 +79,13 @@ language sql stable security definer set search_path = public, auth as $$
 $$;
 revoke all on function public.my_share() from public;
 grant execute on function public.my_share() to authenticated;
+
+-- ============ LGPD: exclusão definitiva da própria conta ============
+create or replace function public.delete_my_account() returns void
+language plpgsql security definer set search_path = public, auth as $$
+begin
+  if auth.uid() is null then raise exception 'unauthorized'; end if;
+  delete from auth.users where id = auth.uid(); -- cascata apaga app_state e app_share
+end $$;
+revoke all on function public.delete_my_account() from public;
+grant execute on function public.delete_my_account() to authenticated;
