@@ -395,6 +395,8 @@ nav.bottom button svg{width:22px; height:22px}
       <div class="setrow" id="rowFam" style="display:none"><div><div class="t">👨‍👩‍👧 Acesso familiar</div><div class="s" id="famStatus">Compartilhe o orçamento com 1 pessoa da família</div></div><button class="act" id="famBtn">Gerenciar</button></div>
       <div class="setrow" id="rowPwd" style="display:none"><div><div class="t">Definir / alterar senha</div><div class="s">Para entrar sem depender do link por e-mail</div></div><button class="act" id="pwdBtn">Definir</button></div>
       <div class="setrow" id="rowLogout" style="display:none"><div><div class="t">Sair da conta</div><div class="s" id="logoutMail"></div></div><button class="act" id="logoutBtn">Sair</button></div>
+      <div class="setrow"><div><div class="t">🔒 Política de Privacidade</div><div class="s">Como cuidamos dos seus dados (LGPD)</div></div><button class="act" id="privBtn">Ver</button></div>
+      <div class="setrow" id="rowDelAcc" style="display:none"><div><div class="t">Excluir minha conta</div><div class="s">Apaga sua conta e todos os dados, sem volta</div></div><button class="act red" id="delAccBtn">Excluir</button></div>
     </div>
     <div class="hint" id="storageHint">Seus dados ficam guardados com segurança <b>na sua conta</b> — só você acessa, e tudo aparece automaticamente em qualquer aparelho em que você entrar. 💡 No celular, use “Adicionar à tela de início” para instalar como app.</div>
     <input type="file" id="impFile" accept="application/json" style="display:none">
@@ -568,6 +570,7 @@ nav.bottom button svg{width:22px; height:22px}
         <button id="authLogin" style="width:100%; background:var(--accent); color:#fff; border-radius:12px; padding:14px; font-weight:700; font-size:15px">Entrar</button>
         <button id="authSend" style="width:100%; margin-top:8px; color:var(--ink2); padding:11px; font-size:13.5px; text-decoration:underline">Esqueci a senha — receber link por e-mail</button>
         <div class="hint" id="authHint" style="margin-top:10px">Entre com seu e-mail e senha — o app mantém você conectado neste dispositivo. Primeira vez aqui? Toque em <b>Criar conta</b>.</div>
+        <div class="hint" style="margin-top:8px">Ao entrar ou criar conta, você concorda com a <a href="privacidade.html" target="_blank" style="color:var(--accent)">Política de Privacidade</a>.</div>
       </div>
       <div id="authStep2" style="display:none">
         <div class="hint" style="margin:0 0 10px">Enviamos um e-mail para <b id="authSentTo"></b>. <b>Toque no link do e-mail</b> para entrar. Se o e-mail trouxer um código, você também pode digitá-lo abaixo:</div>
@@ -1364,6 +1367,7 @@ async function enterApp(session){
   hideAuth();
   const rl=$('#rowLogout'); if(rl){ rl.style.display=''; $('#logoutMail').textContent=user.email||''; }
   const rp=$('#rowPwd'); if(rp) rp.style.display='';
+  const rd=$('#rowDelAcc'); if(rd) rd.style.display='';
   try{
     const {data:sh} = await sb.rpc('my_share');
     if(sh && sh.length){
@@ -1485,6 +1489,19 @@ $('#famUnshare').onclick=async ()=>{
   toast('Acesso familiar removido ✓');
 };
 $('#logoutBtn') && ($('#logoutBtn').onclick=async ()=>{ if(confirm('Sair da conta neste dispositivo?')){ await sb.auth.signOut(); } });
+/* LGPD: política + exclusão definitiva da conta */
+$('#privBtn') && ($('#privBtn').onclick=()=>window.open('privacidade.html','_blank'));
+$('#delAccBtn') && ($('#delAccBtn').onclick=async ()=>{
+  if(!user) return;
+  if(!confirm('Excluir sua conta apaga TODOS os seus dados de forma definitiva. Dica: exporte um backup antes, em Ajustes. Deseja continuar?')) return;
+  const conf = prompt('Para confirmar, digite EXCLUIR (em maiúsculas):');
+  if(conf !== 'EXCLUIR'){ toast('Exclusão cancelada'); return; }
+  const {error} = await sb.rpc('delete_my_account');
+  if(error){ toast('Não foi possível excluir: '+error.message); return; }
+  try{ Object.keys(localStorage).filter(k=>k.indexOf('sobra')===0).forEach(k=>localStorage.removeItem(k)); }catch(e){}
+  alert('Sua conta e todos os seus dados foram excluídos. Obrigado por ter usado o Sobra.');
+  location.reload();
+});
 $('#pwdBtn') && ($('#pwdBtn').onclick=()=>{ $('#pwdNew').value=''; $('#pwdNew2').value=''; $('#pwdOverlay').classList.add('show'); });
 $('#pwdCancel').onclick=()=>$('#pwdOverlay').classList.remove('show');
 $('#pwdSave').onclick=async ()=>{
