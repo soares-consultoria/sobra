@@ -1530,12 +1530,29 @@ $('#pwdSave').onclick=async ()=>{
 applyTheme();
 if(CLOUD){
   showLoad(); /* evita mostrar a tela zerada enquanto a sessão e os dados carregam */
-  sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+  sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storage: window.localStorage }
+  });
   sb.auth.onAuthStateChange((ev, session)=>{
     if(session && !user) enterApp(session);
     if(ev==='SIGNED_OUT'){ user=null; location.reload(); }
   });
-  sb.auth.getSession().then(({data:{session}})=>{ if(session){ if(!user) enterApp(session); } else showAuth(); });
+  /* mantém o usuário conectado: se existe sessão guardada no aparelho,
+     espera a renovação automática em vez de pedir login de novo */
+  const hasStoredSession = () => { try{ return Object.keys(localStorage).some(k=>k.indexOf('sb-')===0 && k.indexOf('auth-token')>-1); }catch(e){ return false; } };
+  (async ()=>{
+    const {data:{session}} = await sb.auth.getSession();
+    if(session){ if(!user) enterApp(session); return; }
+    if(hasStoredSession()){
+      for(let i=0; i<8 && !user; i++){
+        await new Promise(r=>setTimeout(r, 1000));
+        const {data:{session:s2}} = await sb.auth.getSession();
+        if(s2){ if(!user) enterApp(s2); return; }
+        if(!hasStoredSession()) break; /* sessão realmente encerrada pelo servidor */
+      }
+    }
+    if(!user) showAuth();
+  })();
   render();
 } else if(CONFIGURED){
   /* fail-closed: sem o módulo de autenticação, ninguém entra */
