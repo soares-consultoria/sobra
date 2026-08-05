@@ -850,8 +850,8 @@ function renderHome(){
       state.boxes.map(b=>`<button class="chip" data-gobox="1">${boxIcon(b.name)} ${esc(b.name)} · <b>${fmt0(boxBalance(b.id))}</b></button>`).join('')+'</div>';
   } else hb.innerHTML='';
 
-  // pending strip (next 5 by date) + planos mensais das caixinhas
-  const pend = monthTx().filter(t=>t.pending).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5);
+  // pending strip (todos, por dia) + planos mensais das caixinhas
+  const pend = monthTx().filter(t=>t.pending).sort((a,b)=>a.date.localeCompare(b.date));
   const isCurrentM = state.view===todayISO().slice(0,7);
   const plans = isCurrentM ? state.boxes.map(b=>({b, falta:planRemaining(b)})).filter(p=>p.falta>0.009) : [];
   const pw=$('#pendWrap');
