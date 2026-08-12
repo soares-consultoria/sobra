@@ -1495,9 +1495,25 @@ async function bankSyncNow(showFeedback){
       if(showFeedback!==false) alert(res.error==='invalid_credentials'? 'Os códigos não foram aceitos. Confira no painel do Meu Pluggy e tente de novo.' : 'Não foi possível sincronizar agora. Tente de novo em instantes.');
       return;
     }
-    let added=0;
-    for(const x of (res.tx||[])){
-      if(!x.id || state.tx.some(t=>t.pid===x.id)) continue;
+    /* transferências entre as próprias contas não são receita nem despesa:
+       1) o que a própria Pluggy marca como transferência entre mesmas pessoas é ignorado;
+       2) pares espelhados (mesmo valor, sentidos opostos, contas diferentes, até 2 dias) são ignorados. */
+    const txs = (res.tx||[]).filter(x=>x && x.id);
+    const skip = new Set();
+    for(const x of txs){ if(/same person|mesma titular|entre contas pr/i.test(x.cat||'')) skip.add(x.id); }
+    for(let i=0;i<txs.length;i++){
+      if(skip.has(txs[i].id)) continue;
+      for(let j=i+1;j<txs.length;j++){
+        if(skip.has(txs[j].id)) continue;
+        const a=txs[i], b=txs[j];
+        if(a.tipo!==b.tipo && a.conta!==b.conta && Math.abs(a.amount-b.amount)<0.005
+           && Math.abs(new Date(a.date)-new Date(b.date))<=2*864e5){ skip.add(a.id); skip.add(b.id); break; }
+      }
+    }
+    let added=0, transf=0;
+    for(const x of txs){
+      if(skip.has(x.id)){ transf++; continue; }
+      if(state.tx.some(t=>t.pid===x.id)) continue;
       const tipo = x.tipo==='receita' ? 'receita' : 'despesa';
       state.tx.push({ id:uid(), pid:x.id, desc:x.desc||'Lançamento do banco', amount:Math.abs(+x.amount||0), type:tipo, category:mapBankCat(x.cat, x.desc, tipo), date:x.date||todayISO(), pending:false });
       added++;
@@ -1505,7 +1521,10 @@ async function bankSyncNow(showFeedback){
     if(added){ save(); render(); }
     bankInfo = { linked:true, items:res.items, last_sync:new Date().toISOString() };
     bankUI();
-    if(showFeedback!==false) toast(added? added+' lançamento'+(added>1?'s':'')+' importado'+(added>1?'s':'')+' do banco ✓' : 'Tudo em dia — nada novo no banco ✓');
+    if(showFeedback!==false){
+      const extra = transf? ' ('+Math.round(transf/2)+' transferência'+(transf>2?'s':'')+' entre suas contas ignorada'+(transf>2?'s':'')+')' : '';
+      toast(added? added+' lançamento'+(added>1?'s':'')+' importado'+(added>1?'s':'')+' do banco ✓'+extra : 'Tudo em dia — nada novo no banco ✓'+extra);
+    }
   }catch(e){
     if(showFeedback!==false) alert('Não foi possível falar com o serviço agora. Tente de novo em instantes.');
   }finally{
