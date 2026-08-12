@@ -100,6 +100,7 @@ Deno.serve(async (req) => {
               tipo: (x.type === 'CREDIT') ? 'receita' : 'despesa',
               cat: x.category || null,
               conta: a.name || '',
+              ctype: a.type || '',
             });
           }
           page++;

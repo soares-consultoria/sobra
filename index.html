@@ -569,6 +569,7 @@ nav.bottom button svg{width:22px; height:22px}
       <div class="f"><label>Código de acesso 2 (Client Secret)</label><input id="bankSec" type="password" autocomplete="off" placeholder="••••••••"></div>
       <div class="f"><label>Conexões de banco (um código por linha)</label><textarea id="bankItems" rows="3" placeholder="xxxxxxxx-xxxx-xxxx…"></textarea></div>
       <div class="hint" style="margin:0 0 4px">Os códigos ficam guardados com segurança na sua conta — só você tem acesso (nem o acesso familiar vê). Desconectar apaga os códigos na hora.</div>
+      <div class="hint" style="margin:0 0 4px">💳 <b>Cartão de crédito:</b> conectando o cartão, cada compra entra como despesa no dia em que acontece, e o pagamento da fatura é tratado como movimentação entre contas (não conta duas vezes). Dica: se você tinha uma recorrente para a fatura desse cartão, remova-a para não duplicar.</div>
     </div>
     <div id="bankLinked" style="display:none">
       <div class="hint" style="margin:0 0 10px" id="bankLinkedTxt"></div>
@@ -1507,8 +1508,14 @@ async function bankSyncNow(showFeedback){
         if(skip.has(txs[j].id)) continue;
         const a=txs[i], b=txs[j];
         if(a.tipo!==b.tipo && a.conta!==b.conta && Math.abs(a.amount-b.amount)<0.005
-           && Math.abs(new Date(a.date)-new Date(b.date))<=2*864e5){ skip.add(a.id); skip.add(b.id); break; }
+           && Math.abs(new Date(a.date)-new Date(b.date))<=3*864e5){ skip.add(a.id); skip.add(b.id); break; }
       }
+    }
+    /* pagamento de fatura que chega no cartão sem par (conta corrente não conectada):
+       é transferência, não receita — ignora. Estornos/reembolsos continuam entrando. */
+    for(const x of txs){
+      if(skip.has(x.id)) continue;
+      if(x.ctype==='CREDIT' && x.tipo==='receita' && /pagamento|pgto|payment/i.test(x.desc||'')) skip.add(x.id);
     }
     let added=0, transf=0;
     for(const x of txs){
