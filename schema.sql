@@ -89,3 +89,16 @@ begin
 end $$;
 revoke all on function public.delete_my_account() from public;
 grant execute on function public.delete_my_account() to authenticated;
+
+-- ============ Conectar banco (Meu Pluggy, opcional) ============
+create table if not exists public.bank_link (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  client_id text not null,
+  client_secret text not null,
+  item_ids text[] not null default '{}',
+  last_sync timestamptz,
+  created_at timestamptz not null default now()
+);
+alter table public.bank_link enable row level security;
+-- sem policies de acesso: apenas a Edge Function (service role) lê/escreve.
+-- nem o próprio usuário (via API pública) nem o familiar enxergam os códigos.
