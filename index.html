@@ -217,11 +217,12 @@ nav.bottom button svg{width:22px; height:22px}
 .helpbody td:first-child{white-space:nowrap; font-weight:600; color:var(--ink)}
 .f{margin-bottom:12px}
 .f label{display:block; font-size:12.5px; color:var(--ink2); margin-bottom:5px; font-weight:600}
-.f input,.f select{
+.f input,.f select,.f textarea{
   width:100%; background:var(--page); border:1px solid var(--ring); border-radius:12px;
   padding:12px; font-size:16px; outline:none;
 }
-.f input:focus,.f select:focus{border-color:var(--accent)}
+.f textarea{resize:vertical; font-family:inherit}
+.f input:focus,.f select:focus,.f textarea:focus{border-color:var(--accent)}
 .frow{display:grid; grid-template-columns:1fr 1fr; gap:10px}
 .seg{display:grid; grid-template-columns:1fr 1fr; background:var(--surface2); border-radius:12px; padding:3px; gap:3px}
 .seg button{padding:10px; border-radius:10px; font-size:14px; font-weight:600; color:var(--ink2)}
@@ -393,6 +394,7 @@ nav.bottom button svg{width:22px; height:22px}
       <div class="setrow"><div><div class="t">Importar backup</div><div class="s">Restaura um arquivo JSON exportado</div></div><button class="act" id="impJson">Importar</button></div>
       <div class="setrow"><div><div class="t">Apagar tudo</div><div class="s">Remove todos os dados deste dispositivo</div></div><button class="act red" id="wipe">Apagar</button></div>
       <div class="setrow" id="rowFam" style="display:none"><div><div class="t">👨‍👩‍👧 Acesso familiar</div><div class="s" id="famStatus">Compartilhe o orçamento com 1 pessoa da família</div></div><button class="act" id="famBtn">Gerenciar</button></div>
+      <div class="setrow" id="rowBank" style="display:none"><div><div class="t">🏦 Conectar meu banco <span style="font-size:11px;color:var(--ink2)">beta</span></div><div class="s" id="bankStatus">Traga seus lançamentos do banco automaticamente</div></div><button class="act" id="bankBtn">Abrir</button></div>
       <div class="setrow" id="rowPwd" style="display:none"><div><div class="t">Definir / alterar senha</div><div class="s">Para entrar sem depender do link por e-mail</div></div><button class="act" id="pwdBtn">Definir</button></div>
       <div class="setrow" id="rowLogout" style="display:none"><div><div class="t">Sair da conta</div><div class="s" id="logoutMail"></div></div><button class="act" id="logoutBtn">Sair</button></div>
       <div class="setrow"><div><div class="t">🔒 Política de Privacidade</div><div class="s">Como cuidamos dos seus dados (LGPD)</div></div><button class="act" id="privBtn">Ver</button></div>
@@ -549,6 +551,33 @@ nav.bottom button svg{width:22px; height:22px}
       <button class="ghost" id="famCancel">Fechar</button>
       <button class="primary" id="famShare">Compartilhar</button>
       <button class="danger" id="famUnshare" style="display:none">Remover acesso</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="bankOverlay">
+  <div class="sheet">
+    <h3>🏦 Conectar meu banco <span style="font-size:12px;color:var(--ink2)">beta</span></h3>
+    <div id="bankSetup">
+      <div class="hint" style="margin:0 0 10px">Opcional e gratuito: seus gastos e receitas entram sozinhos no Sobra, direto do banco. São 3 passos, feitos uma única vez:</div>
+      <div class="hint" style="margin:0 0 12px">
+        <b>1.</b> Crie sua conta gratuita no <a href="https://meu.pluggy.ai" target="_blank" style="color:var(--accent)">meu.pluggy.ai</a> e conecte lá os seus bancos — a autorização é oficial (Open Finance) e acontece no ambiente do próprio banco. Você nunca digita a senha do banco aqui no Sobra.<br>
+        <b>2.</b> No painel do Meu Pluggy, copie os dois códigos de acesso da sua conta.<br>
+        <b>3.</b> Copie também o código de cada conexão de banco e cole tudo abaixo.
+      </div>
+      <div class="f"><label>Código de acesso 1 (Client ID)</label><input id="bankCid" type="text" autocomplete="off" placeholder="xxxxxxxx-xxxx-xxxx…"></div>
+      <div class="f"><label>Código de acesso 2 (Client Secret)</label><input id="bankSec" type="password" autocomplete="off" placeholder="••••••••"></div>
+      <div class="f"><label>Conexões de banco (um código por linha)</label><textarea id="bankItems" rows="3" placeholder="xxxxxxxx-xxxx-xxxx…"></textarea></div>
+      <div class="hint" style="margin:0 0 4px">Os códigos ficam guardados com segurança na sua conta — só você tem acesso (nem o acesso familiar vê). Desconectar apaga os códigos na hora.</div>
+    </div>
+    <div id="bankLinked" style="display:none">
+      <div class="hint" style="margin:0 0 10px" id="bankLinkedTxt"></div>
+    </div>
+    <div class="actions">
+      <button class="ghost" id="bankCancel">Fechar</button>
+      <button class="primary" id="bankSave">Salvar e sincronizar</button>
+      <button class="primary" id="bankSync" style="display:none">Sincronizar agora</button>
+      <button class="danger" id="bankUnlink" style="display:none">Desconectar</button>
     </div>
   </div>
 </div>
@@ -1390,6 +1419,7 @@ async function enterApp(session){
   const rl=$('#rowLogout'); if(rl){ rl.style.display=''; $('#logoutMail').textContent=user.email||''; }
   const rp=$('#rowPwd'); if(rp) rp.style.display='';
   const rd=$('#rowDelAcc'); if(rd) rd.style.display='';
+  const rb=$('#rowBank'); if(rb) rb.style.display='';
   try{
     const {data:sh} = await sb.rpc('my_share');
     if(sh && sh.length){
@@ -1418,7 +1448,107 @@ async function enterApp(session){
   }catch(e){ load(); toast('⚠️ Nuvem indisponível — usando dados deste dispositivo'); }
   render();
   hideLoad();
+  bankInit();
 }
+/* ============ conectar banco (Meu Pluggy, opcional) ============ */
+let bankInfo = null; /* {linked, items, last_sync} */
+async function bankCall(body){
+  const {data:{session}} = await sb.auth.getSession();
+  if(!session) throw new Error('sem sessão');
+  const r = await fetch(SUPA_URL+'/functions/v1/pluggy-sync', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token,'apikey':SUPA_KEY},
+    body: JSON.stringify(body||{})
+  });
+  return r.json();
+}
+function bankUI(){
+  const linked = !!(bankInfo && bankInfo.linked);
+  $('#bankSetup').style.display = linked?'none':'';
+  $('#bankLinked').style.display = linked?'':'none';
+  $('#bankSave').style.display = linked?'none':'';
+  $('#bankSync').style.display = linked?'':'none';
+  $('#bankUnlink').style.display = linked?'':'none';
+  if(linked){
+    const ls = bankInfo.last_sync? new Date(bankInfo.last_sync).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : null;
+    $('#bankLinkedTxt').innerHTML = 'Seu banco está conectado ✓ ('+(bankInfo.items||0)+' conexão'+((bankInfo.items||0)>1?'es':'')+').'+(ls? ' Última sincronização: '+ls+'.':' Ainda não sincronizado.')+'<br><br>Toque em <b>Sincronizar agora</b> para buscar os lançamentos novos do mês. Lançamentos já importados nunca entram duas vezes.';
+    $('#bankStatus').textContent = 'Conectado — seus lançamentos entram do banco';
+  } else {
+    $('#bankStatus').textContent = 'Traga seus lançamentos do banco automaticamente';
+  }
+}
+function mapBankCat(cat, desc, tipo){
+  const c=(cat||'').toLowerCase();
+  const M=[["mercado|grocer|supermerc","Mercado"],["aliment|food|restaur|lanche|delivery|drink","Alimentação"],["transp|uber|combust|fuel|mobil|estacion|parking","Transporte"],["morad|rent|housing|alug|condom","Moradia"],["utilit|energia|electr|internet|telefon|telecom|água|agua|gás|gas|bills","Contas"],["saúde|saude|health|farm|pharma|médic|medic|hospital","Saúde"],["lazer|entreten|leisure|viag|travel|hobb","Lazer"],["educa|school|curso|university","Educação"],["shopping|vestu|cloth|eletrôn|electron","Compras"],["assinatura|subscript|stream","Assinaturas"],["pet","Pets"],["invest","Investimentos"],["imposto|tax|tarifa|fee","Impostos e taxas"],["seguro|insur","Seguros"],["emprést|emprest|loan|financ|parcel","Empréstimos e parcelas"],["cuidado|beleza|beauty|personal care","Cuidados pessoais"],["doaç|doac|donat","Doações"],["cartão|cartao|credit card","Cartão de crédito"],["salár|salar|salary|payroll|income","Salário"],["juro|interest|rendiment|yield|dividend","Juros de aplicação"],["pix|transfer","Pix"]];
+  for(const p of M){ if(new RegExp(p[0]).test(c) && CATS[tipo].includes(p[1])) return p[1]; }
+  const t2=(desc||'').toLowerCase(); let best=null,_b=0;
+  for(const [catName,kws] of Object.entries(KW)){ for(const k of kws){ if(t2.includes(k) && k.length>_b){ _b=k.length; best=catName; } } }
+  if(best && CATS[tipo].includes(best)) return best;
+  return 'Outros';
+}
+async function bankSyncNow(showFeedback){
+  try{
+    $('#bankSync').disabled=true; $('#bankSave').disabled=true;
+    const from = todayISO().slice(0,7)+'-01';
+    const res = await bankCall({action:'sync', from});
+    if(res.error){
+      if(showFeedback!==false) alert(res.error==='invalid_credentials'? 'Os códigos não foram aceitos. Confira no painel do Meu Pluggy e tente de novo.' : 'Não foi possível sincronizar agora. Tente de novo em instantes.');
+      return;
+    }
+    let added=0;
+    for(const x of (res.tx||[])){
+      if(!x.id || state.tx.some(t=>t.pid===x.id)) continue;
+      const tipo = x.tipo==='receita' ? 'receita' : 'despesa';
+      state.tx.push({ id:uid(), pid:x.id, desc:x.desc||'Lançamento do banco', amount:Math.abs(+x.amount||0), type:tipo, category:mapBankCat(x.cat, x.desc, tipo), date:x.date||todayISO(), pending:false });
+      added++;
+    }
+    if(added){ save(); render(); }
+    bankInfo = { linked:true, items:res.items, last_sync:new Date().toISOString() };
+    bankUI();
+    if(showFeedback!==false) toast(added? added+' lançamento'+(added>1?'s':'')+' importado'+(added>1?'s':'')+' do banco ✓' : 'Tudo em dia — nada novo no banco ✓');
+  }catch(e){
+    if(showFeedback!==false) alert('Não foi possível falar com o serviço agora. Tente de novo em instantes.');
+  }finally{
+    $('#bankSync').disabled=false; $('#bankSave').disabled=false;
+  }
+}
+async function bankInit(){
+  try{
+    const st = await bankCall({action:'status'});
+    if(st && st.linked){
+      bankInfo = st; bankUI();
+      const stale = !st.last_sync || (Date.now()-new Date(st.last_sync).getTime() > 12*3600*1000);
+      if(stale) bankSyncNow(false);
+    }
+  }catch(e){}
+}
+$('#bankBtn') && ($('#bankBtn').onclick=async ()=>{ bankUI(); $('#bankOverlay').classList.add('show'); try{ const st=await bankCall({action:'status'}); bankInfo=st&&st.linked?st:null; bankUI(); }catch(e){} });
+$('#bankCancel') && ($('#bankCancel').onclick=()=>$('#bankOverlay').classList.remove('show'));
+$('#bankSave') && ($('#bankSave').onclick=async ()=>{
+  const cid=$('#bankCid').value.trim(), sec=$('#bankSec').value.trim();
+  const items=$('#bankItems').value.split(/[\n,;\s]+/).map(s=>s.trim()).filter(Boolean);
+  if(!cid || !sec){ alert('Preencha os dois códigos de acesso do Meu Pluggy.'); return; }
+  if(!items.length){ alert('Cole pelo menos um código de conexão de banco.'); return; }
+  $('#bankSave').disabled=true;
+  try{
+    const res = await bankCall({action:'save', client_id:cid, client_secret:sec, item_ids:items});
+    if(res.error){ alert(res.error==='invalid_credentials'? 'Os códigos não foram aceitos. Confira no painel do Meu Pluggy (copie e cole para evitar erros de digitação).' : 'Não foi possível salvar agora. Tente de novo em instantes.'); return; }
+    bankInfo={linked:true, items:items.length, last_sync:null};
+    $('#bankSec').value='';
+    bankUI();
+    toast('Banco conectado ✓');
+    await bankSyncNow();
+  }catch(e){ alert('Não foi possível falar com o serviço agora. Tente de novo em instantes.'); }
+  finally{ $('#bankSave').disabled=false; }
+});
+$('#bankSync') && ($('#bankSync').onclick=()=>bankSyncNow());
+$('#bankUnlink') && ($('#bankUnlink').onclick=async ()=>{
+  if(!confirm('Desconectar apaga os códigos de acesso guardados e para as sincronizações. Os lançamentos já importados continuam no seu orçamento. Continuar?')) return;
+  try{
+    const res = await bankCall({action:'delete'});
+    if(res && res.ok){ bankInfo=null; bankUI(); toast('Banco desconectado ✓'); }
+  }catch(e){ alert('Não foi possível falar com o serviço agora. Tente de novo em instantes.'); }
+});
 /* ============ ajuda ============ */
 function buildHelp(){
   const linhas = Object.entries(KW).map(([cat,kws])=>{
@@ -1447,6 +1577,9 @@ function buildHelp(){
 <p><b>Dica importante:</b> ao resgatar, o valor volta para a sobra do mês (é dinheiro para gastar). Se você está apenas <b>mudando dinheiro de lugar</b> entre caixinhas, marque <b>"🔄 Só reorganizando"</b> — assim a previsão do mês não é afetada.</p>
 <h4>👨‍👩‍👧 Acesso familiar</h4>
 <p>Compartilhe seu orçamento com 1 pessoa da família: cada um entra com seu próprio e-mail e senha, e os dois veem e lançam no mesmo orçamento. Quem foi convidado pode alternar entre o orçamento da família e o individual quando quiser.</p>
+<h4>🏦 Conectar meu banco (beta, opcional)</h4>
+<p>Se quiser, seus gastos e receitas podem entrar sozinhos no Sobra, direto do banco. É opcional e desligado por padrão: em Ajustes, toque em <b>Conectar meu banco</b> e siga os 3 passos (usa o Meu Pluggy, um serviço gratuito de Open Finance — a autorização acontece no ambiente do próprio banco, e você nunca digita a senha do banco no Sobra). Depois é só tocar em <b>Sincronizar agora</b> quando quiser buscar os lançamentos novos. Dá para desconectar a qualquer momento.</p>
+
 <h4>🔐 Sua conta</h4>
 <p>Seus dados ficam guardados com segurança na sua conta e aparecem em qualquer aparelho em que você entrar. Aqui em Ajustes você também define sua senha, exporta uma cópia dos seus dados e sai da conta. 💡 No celular, use "Adicionar à tela de início" para o Sobra virar um app.</p>`;
 }
