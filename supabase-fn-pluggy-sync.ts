@@ -82,10 +82,14 @@ Deno.serve(async (req) => {
 
     const from = /^\d{4}-\d{2}-\d{2}$/.test(body.from || '') ? body.from : new Date().toISOString().slice(0, 8) + '01';
     const out: any[] = [];
+    const cards: any[] = [];
 
     for (const itemId of link.item_ids || []) {
       const accs = await pget(`accounts?itemId=${encodeURIComponent(itemId)}`, apiKey);
       for (const a of accs?.results || []) {
+        if (a.type === 'CREDIT') {
+          cards.push({ nome: a.name || 'Cartão', fatura: Math.abs(Number(a.balance) || 0), vence: a.creditData && a.creditData.balanceDueDate ? String(a.creditData.balanceDueDate).slice(0, 10) : null });
+        }
         let page = 1, totalPages = 1;
         while (page <= totalPages && page <= 10) {
           const t = await pget(`transactions?accountId=${encodeURIComponent(a.id)}&from=${from}&pageSize=500&page=${page}`, apiKey);
@@ -109,7 +113,7 @@ Deno.serve(async (req) => {
     }
 
     await supa.from('bank_link').update({ last_sync: new Date().toISOString() }).eq('user_id', uid);
-    return json({ ok: true, items: (link.item_ids || []).length, tx: out });
+    return json({ ok: true, items: (link.item_ids || []).length, tx: out, cards });
   } catch (e) {
     return json({ error: 'internal' }, 500);
   }

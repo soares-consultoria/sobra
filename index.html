@@ -276,6 +276,7 @@ nav.bottom button svg{width:22px; height:22px}
   #v-home #heroCard{ grid-column:2; grid-row:span 2; align-self:stretch }
   #v-home #pendWrap{ grid-column:1 }
   #v-home #homeBoxes{ grid-column:1/-1 }
+  #v-home #homeCards{ grid-column:1/-1 }
   #heroCard .val{ font-size:40px }
   /* listas em duas colunas */
   #recIncomes, #recExpenses{ display:grid; grid-template-columns:1fr 1fr; gap:8px }
@@ -336,6 +337,7 @@ nav.bottom button svg{width:22px; height:22px}
     </div>
 
     <div id="pendWrap"></div>
+    <div id="homeCards"></div>
     <div id="homeBoxes"></div>
 
     <h2 class="sec" id="catTitle" style="display:none">Para onde foi o dinheiro</h2>
@@ -767,10 +769,10 @@ const CONFIGURED = SUPA_URL.indexOf('https')===0;
 const CLOUD = CONFIGURED && !!window.supabase;
 let sb=null, user=null, syncTimer=null, dirty=false;
 let dataOwner=null, shareInfo=null; /* acesso familiar: dataOwner = dono do orçamento em uso */
-let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], theme:null, view: todayISO().slice(0,7) };
+let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], cards:[], theme:null, view: todayISO().slice(0,7) };
 function lsKey(){ const id=dataOwner||(user&&user.id); return id ? LS+'.'+id : LS; }
-function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov}; }
-function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; }
+function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov, cards:state.cards}; }
+function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; state.cards=s.cards||[]; }
 function load(){ try{ const s=JSON.parse(localStorage.getItem(lsKey())); if(s) adopt(s); }catch(e){} }
 function save(){
   localStorage.setItem(lsKey(), JSON.stringify(snapshot()));
@@ -883,6 +885,18 @@ function renderHome(){
   let heroSub = parts.length? 'Já considerei: '+parts.join(' · ') : (f.isCurrent?'Baseado no que você já lançou este mês.':'');
   if(f.val<0) heroSub += (heroSub?' — ':'') + (f.isCurrent ? 'Não é valor disponível: é quanto vai FALTAR se nada mudar.' : 'O mês fechou no vermelho.');
   $('#heroSub').textContent = heroSub;
+
+  // cartões de crédito conectados (fatura atual vinda do banco)
+  const hc=$('#homeCards');
+  if(hc){
+    if(state.cards && state.cards.length){
+      hc.innerHTML = '<h2 class="sec">Cartões de crédito — fatura atual</h2><div class="filters">'+
+        state.cards.map(c=>{
+          const vence = c.vence? ' · vence dia '+(+c.vence.slice(8,10)) : '';
+          return `<button class="chip">💳 ${esc(c.nome)} · <b>${fmt0(c.fatura)}</b>${vence}</button>`;
+        }).join('')+'</div>';
+    } else hc.innerHTML='';
+  }
 
   // caixinhas na home
   const hb=$('#homeBoxes');
@@ -1525,7 +1539,8 @@ async function bankSyncNow(showFeedback){
       state.tx.push({ id:uid(), pid:x.id, desc:x.desc||'Lançamento do banco', amount:Math.abs(+x.amount||0), type:tipo, category:mapBankCat(x.cat, x.desc, tipo), date:x.date||todayISO(), pending:false });
       added++;
     }
-    if(added){ save(); render(); }
+    if(Array.isArray(res.cards)) state.cards = res.cards;
+    if(added || Array.isArray(res.cards)){ save(); render(); }
     bankInfo = { linked:true, items:res.items, last_sync:new Date().toISOString() };
     bankUI();
     if(showFeedback!==false){
@@ -1572,7 +1587,7 @@ $('#bankUnlink') && ($('#bankUnlink').onclick=async ()=>{
   if(!confirm('Desconectar apaga os códigos de acesso guardados e para as sincronizações. Os lançamentos já importados continuam no seu orçamento. Continuar?')) return;
   try{
     const res = await bankCall({action:'delete'});
-    if(res && res.ok){ bankInfo=null; bankUI(); toast('Banco desconectado ✓'); }
+    if(res && res.ok){ bankInfo=null; state.cards=[]; save(); render(); bankUI(); toast('Banco desconectado ✓'); }
   }catch(e){ alert('Não foi possível falar com o serviço agora. Tente de novo em instantes.'); }
 });
 /* ============ ajuda ============ */
