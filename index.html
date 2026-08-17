@@ -561,16 +561,14 @@ nav.bottom button svg{width:22px; height:22px}
   <div class="sheet">
     <h3>🏦 Conectar meu banco <span style="font-size:12px;color:var(--ink2)">beta</span></h3>
     <div id="bankSetup">
-      <div class="hint" style="margin:0 0 10px">Opcional e gratuito: seus gastos e receitas entram sozinhos no Sobra, direto do banco. São 3 passos, feitos uma única vez:</div>
+      <div class="hint" style="margin:0 0 10px">Opcional: seus gastos e receitas entram sozinhos no Sobra, direto do banco, via <b>Banco MCP</b> (Open Finance oficial). São 3 passos, feitos uma única vez:</div>
       <div class="hint" style="margin:0 0 12px">
-        <b>1.</b> Crie sua conta gratuita no <a href="https://meu.pluggy.ai" target="_blank" style="color:var(--accent)">meu.pluggy.ai</a> e conecte lá os seus bancos — a autorização é oficial (Open Finance) e acontece no ambiente do próprio banco. Você nunca digita a senha do banco aqui no Sobra.<br>
-        <b>2.</b> No painel do Meu Pluggy, copie os dois códigos de acesso da sua conta.<br>
-        <b>3.</b> Copie também o código de cada conexão de banco e cole tudo abaixo.
+        <b>1.</b> Crie sua conta no <a href="https://banco.mcp.ai" target="_blank" style="color:var(--accent)">banco.mcp.ai</a> e conecte lá os seus bancos — a autorização acontece no ambiente do próprio banco. Você nunca digita a senha do banco no Sobra.<br>
+        <b>2.</b> No painel <a href="https://app.mcp.ai" target="_blank" style="color:var(--accent)">app.mcp.ai</a>, abra <b>API → Keys</b> e crie uma chave de acesso.<br>
+        <b>3.</b> Cole a chave abaixo. Pronto — o Sobra encontra suas contas sozinho.
       </div>
-      <div class="f"><label>Código de acesso 1 (Client ID)</label><input id="bankCid" type="text" autocomplete="off" placeholder="xxxxxxxx-xxxx-xxxx…"></div>
-      <div class="f"><label>Código de acesso 2 (Client Secret)</label><input id="bankSec" type="password" autocomplete="off" placeholder="••••••••"></div>
-      <div class="f"><label>Conexões de banco (um código por linha)</label><textarea id="bankItems" rows="3" placeholder="xxxxxxxx-xxxx-xxxx…"></textarea></div>
-      <div class="hint" style="margin:0 0 4px">Os códigos ficam guardados com segurança na sua conta — só você tem acesso (nem o acesso familiar vê). Desconectar apaga os códigos na hora.</div>
+      <div class="f"><label>Chave de acesso (começa com sk_live)</label><input id="bankKey" type="password" autocomplete="off" placeholder="sk_live_…"></div>
+      <div class="hint" style="margin:0 0 4px">A chave fica guardada com segurança na sua conta — só você tem acesso (nem o acesso familiar vê). Desconectar apaga a chave na hora.</div>
       <div class="hint" style="margin:0 0 4px">💳 <b>Cartão de crédito:</b> conectando o cartão, cada compra entra como despesa no dia em que acontece, e o pagamento da fatura é tratado como movimentação entre contas (não conta duas vezes). Dica: se você tinha uma recorrente para a fatura desse cartão, remova-a para não duplicar.</div>
     </div>
     <div id="bankLinked" style="display:none">
@@ -1465,7 +1463,7 @@ async function enterApp(session){
   hideLoad();
   bankInit();
 }
-/* ============ conectar banco (Meu Pluggy, opcional) ============ */
+/* ============ conectar banco (Banco MCP, opcional) ============ */
 let bankInfo = null; /* {linked, items, last_sync} */
 async function bankCall(body){
   const {data:{session}} = await sb.auth.getSession();
@@ -1486,7 +1484,7 @@ function bankUI(){
   $('#bankUnlink').style.display = linked?'':'none';
   if(linked){
     const ls = bankInfo.last_sync? new Date(bankInfo.last_sync).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : null;
-    $('#bankLinkedTxt').innerHTML = 'Seu banco está conectado ✓ ('+(bankInfo.items||0)+' conexão'+((bankInfo.items||0)>1?'es':'')+').'+(ls? ' Última sincronização: '+ls+'.':' Ainda não sincronizado.')+'<br><br>Toque em <b>Sincronizar agora</b> para buscar os lançamentos novos do mês. Lançamentos já importados nunca entram duas vezes.';
+    $('#bankLinkedTxt').innerHTML = 'Seu banco está conectado ✓'+(ls? ' Última sincronização: '+ls+'.':' Ainda não sincronizado.')+'<br><br>Toque em <b>Sincronizar agora</b> para buscar os lançamentos novos do mês. Lançamentos já importados nunca entram duas vezes.<br><br>Para conectar mais bancos, use o painel do <a href="https://banco.mcp.ai" target="_blank" style="color:var(--accent)">Banco MCP</a> — eles aparecem aqui na próxima sincronização.';
     $('#bankStatus').textContent = 'Conectado — seus lançamentos entram do banco';
   } else {
     $('#bankStatus').textContent = 'Traga seus lançamentos do banco automaticamente';
@@ -1507,7 +1505,7 @@ async function bankSyncNow(showFeedback){
     const from = todayISO().slice(0,7)+'-01';
     const res = await bankCall({action:'sync', from});
     if(res.error){
-      if(showFeedback!==false) alert(res.error==='invalid_credentials'? 'Os códigos não foram aceitos. Confira no painel do Meu Pluggy e tente de novo.' : 'Não foi possível sincronizar agora. Tente de novo em instantes.');
+      if(showFeedback!==false) alert(res.error==='invalid_credentials'? 'A chave não foi aceita. Confira em app.mcp.ai → API → Keys e tente de novo.' : 'Não foi possível sincronizar agora. Tente de novo em instantes.');
       return;
     }
     /* transferências entre as próprias contas não são receita nem despesa:
@@ -1566,16 +1564,17 @@ async function bankInit(){
 $('#bankBtn') && ($('#bankBtn').onclick=async ()=>{ bankUI(); $('#bankOverlay').classList.add('show'); try{ const st=await bankCall({action:'status'}); bankInfo=st&&st.linked?st:null; bankUI(); }catch(e){} });
 $('#bankCancel') && ($('#bankCancel').onclick=()=>$('#bankOverlay').classList.remove('show'));
 $('#bankSave') && ($('#bankSave').onclick=async ()=>{
-  const cid=$('#bankCid').value.trim(), sec=$('#bankSec').value.trim();
-  const items=$('#bankItems').value.split(/[\n,;\s]+/).map(s=>s.trim()).filter(Boolean);
-  if(!cid || !sec){ alert('Preencha os dois códigos de acesso do Meu Pluggy.'); return; }
-  if(!items.length){ alert('Cole pelo menos um código de conexão de banco.'); return; }
+  const key=$('#bankKey').value.trim();
+  if(!key || key.indexOf('sk_live')!==0){ alert('Cole a chave de acesso do Banco MCP (ela começa com sk_live). Você a cria em app.mcp.ai → API → Keys.'); return; }
   $('#bankSave').disabled=true;
   try{
-    const res = await bankCall({action:'save', client_id:cid, client_secret:sec, item_ids:items});
-    if(res.error){ alert(res.error==='invalid_credentials'? 'Os códigos não foram aceitos. Confira no painel do Meu Pluggy (copie e cole para evitar erros de digitação).' : 'Não foi possível salvar agora. Tente de novo em instantes.'); return; }
-    bankInfo={linked:true, items:items.length, last_sync:null};
-    $('#bankSec').value='';
+    const res = await bankCall({action:'save_mcp', key});
+    if(res.error){
+      alert(res.error==='invalid_credentials'? 'A chave não foi aceita. Confira em app.mcp.ai → API → Keys (copie e cole para evitar erros).' : 'Não foi possível falar com o Banco MCP agora. Tente de novo em instantes.');
+      return;
+    }
+    bankInfo={linked:true, items:res.accounts||0, last_sync:null};
+    $('#bankKey').value='';
     bankUI();
     toast('Banco conectado ✓');
     await bankSyncNow();
@@ -1619,7 +1618,7 @@ function buildHelp(){
 <h4>👨‍👩‍👧 Acesso familiar</h4>
 <p>Compartilhe seu orçamento com 1 pessoa da família: cada um entra com seu próprio e-mail e senha, e os dois veem e lançam no mesmo orçamento. Quem foi convidado pode alternar entre o orçamento da família e o individual quando quiser.</p>
 <h4>🏦 Conectar meu banco (beta, opcional)</h4>
-<p>Se quiser, seus gastos e receitas podem entrar sozinhos no Sobra, direto do banco. É opcional e desligado por padrão: em Ajustes, toque em <b>Conectar meu banco</b> e siga os 3 passos (usa o Meu Pluggy, um serviço gratuito de Open Finance — a autorização acontece no ambiente do próprio banco, e você nunca digita a senha do banco no Sobra). Depois é só tocar em <b>Sincronizar agora</b> quando quiser buscar os lançamentos novos. Dá para desconectar a qualquer momento.</p>
+<p>Se quiser, seus gastos e receitas podem entrar sozinhos no Sobra, direto do banco. É opcional e desligado por padrão: em Ajustes, toque em <b>Conectar meu banco</b> e siga os 3 passos (usa o Banco MCP, um serviço de Open Finance — a autorização acontece no ambiente do próprio banco, e você nunca digita a senha do banco no Sobra). Depois é só tocar em <b>Sincronizar agora</b> quando quiser buscar os lançamentos novos. Dá para desconectar a qualquer momento.</p>
 
 <h4>🔐 Sua conta</h4>
 <p>Seus dados ficam guardados com segurança na sua conta e aparecem em qualquer aparelho em que você entrar. Aqui em Ajustes você também define sua senha, exporta uma cópia dos seus dados e sai da conta. 💡 No celular, use "Adicionar à tela de início" para o Sobra virar um app.</p>`;
