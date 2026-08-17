@@ -1,13 +1,13 @@
 // Sobra · Edge Function "pluggy-sync"
 // Ponte segura entre o app e o provedor de Open Finance.
 // Suporta dois provedores:
-//   - Banco MCP (api.mcp.ai, chave sk_live_...)  <- atual
-//   - Pluggy direto (client_id/client_secret)    <- legado
+//   - Banco MCP (URL MCP de api.mcp.ai, protocolo MCP/JSON-RPC)  <- atual
+//   - Pluggy direto (client_id/client_secret)                    <- legado
 // As credenciais ficam na tabela bank_link, acessível apenas por esta função.
 //
 // Ações (POST, JSON):
 //   {action:'status'}                       -> {linked, provider, items, last_sync}
-//   {action:'save_mcp', key}                -> {ok, accounts} | {error}
+//   {action:'save_mcp', key}                -> {ok, accounts} | {error}   (key = URL MCP)
 //   {action:'save', client_id, client_secret, item_ids} -> legado Pluggy
 //   {action:'delete'}                       -> {ok}
 //   {action:'sync', from:'YYYY-MM-DD'}      -> {ok, items, tx:[...], cards:[...]}
@@ -22,31 +22,68 @@ const CORS: Record<string, string> = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
-/* ============ Banco MCP (api.mcp.ai) ============ */
-const MCP_BASES = ['https://api.mcp.ai/v1/openfinance', 'https://banco.mcp.ai/v1/openfinance'];
+/* ============ Banco MCP — protocolo MCP (JSON-RPC sobre HTTP) ============ */
 
-async function mcpGet(url: string, key: string): Promise<{ ok: boolean; status: number; data: any }> {
+function sseParse(text: string): any {
+  // resposta pode vir como JSON puro ou como text/event-stream ("data: {...}")
+  let out: any = null;
+  for (const line of text.split('\n')) {
+    if (line.startsWith('data: ')) {
+      try { out = JSON.parse(line.slice(6)); } catch (_e) { /* segue */ }
+    }
+  }
+  if (!out) { try { out = JSON.parse(text); } catch (_e) { /* segue */ } }
+  return out;
+}
+
+async function mcpPost(url: string, sid: string | null, body: any): Promise<{ status: number; sid: string | null; msg: any }> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/event-stream',
+  };
+  if (sid) headers['mcp-session-id'] = sid;
   try {
-    const r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + key, 'Accept': 'application/json' } });
-    const data = await r.json().catch(() => null);
-    return { ok: r.ok, status: r.status, data };
+    const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    const text = await r.text();
+    return { status: r.status, sid: r.headers.get('mcp-session-id') || sid, msg: sseParse(text) };
   } catch (_e) {
-    return { ok: false, status: 0, data: null };
+    return { status: 0, sid, msg: null };
   }
 }
 
-async function mcpFindBase(key: string): Promise<{ base: string; accounts: any[] } | { error: string; detail?: any }> {
-  let lastStatus = 0;
-  for (const base of MCP_BASES) {
-    const r = await mcpGet(base + '/accounts', key);
-    if (r.ok && r.data) {
-      const accounts = r.data.results || r.data.accounts || (Array.isArray(r.data) ? r.data : []);
-      return { base, accounts };
+// abre sessão MCP; retorna {sid} ou {error}
+async function mcpConnect(url: string): Promise<{ sid: string | null } | { error: string }> {
+  const init = await mcpPost(url, null, {
+    jsonrpc: '2.0', id: 1, method: 'initialize',
+    params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'sobra', version: '1.0' } },
+  });
+  if (init.status === 401 || init.status === 403 || init.status === 404) return { error: 'invalid_credentials' };
+  if (init.status < 200 || init.status >= 300 || !init.msg || !init.msg.result) return { error: 'api_indisponivel' };
+  const sid = init.sid;
+  await mcpPost(url, sid, { jsonrpc: '2.0', method: 'notifications/initialized' });
+  return { sid };
+}
+
+// chama uma tool e devolve o JSON interno (content[0].text) ou null
+async function mcpTool(url: string, sid: string | null, name: string, args: any): Promise<any | null> {
+  const r = await mcpPost(url, sid, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args || {} } });
+  const res = r.msg && r.msg.result;
+  if (!res || res.isError) return null;
+  if (Array.isArray(res.content)) {
+    for (const c of res.content) {
+      if (c && typeof c.text === 'string') {
+        try { return JSON.parse(c.text); } catch (_e) { /* segue */ }
+      }
     }
-    lastStatus = r.status;
-    if (r.status === 401 || r.status === 403) return { error: 'invalid_credentials', detail: r.data };
   }
-  return { error: 'api_indisponivel', detail: lastStatus };
+  return res;
+}
+
+function normMcpUrl(s: string): string | null {
+  s = String(s || '').trim();
+  if (/^api\.mcp\.ai\//.test(s)) s = 'https://' + s;
+  if (!/^https:\/\/api\.mcp\.ai\/tk_[A-Za-z0-9_-]+/.test(s)) return null;
+  return s;
 }
 
 function contaLabel(acc: any): string {
@@ -56,25 +93,19 @@ function contaLabel(acc: any): string {
   return (bank ? bank + ' ' : '') + tipo;
 }
 
-async function mcpSync(key: string, meta: any, from: string) {
-  let base = meta && meta.base;
-  let accounts: any[] | null = null;
-  if (base) {
-    const r = await mcpGet(base + '/accounts', key);
-    if (r.ok && r.data) accounts = r.data.results || r.data.accounts || [];
-    else if (r.status === 401 || r.status === 403) return { error: 'invalid_credentials' };
-    else base = null;
-  }
-  if (!base) {
-    const found = await mcpFindBase(key);
-    if ('error' in found) return found;
-    base = found.base;
-    accounts = found.accounts;
-  }
+async function mcpSync(url: string, from: string) {
+  const conn = await mcpConnect(url);
+  if ('error' in conn) return conn;
+  const sid = conn.sid;
+
+  const accData = await mcpTool(url, sid, 'openfinance_list_accounts', {});
+  if (!accData) return { error: 'api_indisponivel' };
+  const accounts = accData.results || accData.accounts || (Array.isArray(accData) ? accData : []);
+
   const hoje = new Date().toISOString().slice(0, 10);
   const out: any[] = [];
   const cards: any[] = [];
-  for (const acc of accounts || []) {
+  for (const acc of accounts) {
     if (acc.type === 'CREDIT') {
       cards.push({
         nome: contaLabel(acc),
@@ -84,10 +115,9 @@ async function mcpSync(key: string, meta: any, from: string) {
     }
     const accId = acc.account_id || acc.id;
     if (!accId) continue;
-    const q = `?account_id=${encodeURIComponent(accId)}&accountId=${encodeURIComponent(accId)}&since=${from}&from=${from}`;
-    const t = await mcpGet(base + '/transactions' + q, key);
-    if (!t.ok || !t.data) continue;
-    const results = t.data.results || t.data.transactions || (Array.isArray(t.data) ? t.data : []);
+    const tData = await mcpTool(url, sid, 'openfinance_list_transactions', { account_id: accId, from });
+    if (!tData) continue;
+    const results = tData.results || tData.transactions || (Array.isArray(tData) ? tData : []);
     for (const x of results) {
       const date = String(x.date || '').slice(0, 10);
       if (!x.id || !date) continue;
@@ -95,18 +125,14 @@ async function mcpSync(key: string, meta: any, from: string) {
       const amt = Math.abs(Number(x.amount) || 0);
       if (!amt) continue;
       out.push({
-        id: x.id,
-        date,
-        desc: x.description || '',
-        amount: amt,
+        id: x.id, date, desc: x.description || '', amount: amt,
         tipo: (x.type === 'CREDIT') ? 'receita' : 'despesa',
-        cat: x.category || null,
-        conta: contaLabel(acc),
+        cat: x.category || null, conta: contaLabel(acc),
         ctype: acc.type === 'CREDIT' ? 'CREDIT' : 'BANK',
       });
     }
   }
-  return { ok: true, base, items: (accounts || []).length, tx: out, cards };
+  return { ok: true, items: accounts.length, tx: out, cards };
 }
 
 /* ============ Pluggy direto (legado) ============ */
@@ -180,16 +206,18 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'save_mcp') {
-      const key = String(body.key || '').trim();
-      if (!/^sk_live_/.test(key)) return json({ error: 'invalid_credentials' }, 400);
-      const found = await mcpFindBase(key);
-      if ('error' in found) return json({ error: found.error }, 400);
+      const url = normMcpUrl(body.key);
+      if (!url) return json({ error: 'invalid_credentials' }, 400);
+      const conn = await mcpConnect(url);
+      if ('error' in conn) return json({ error: conn.error }, 400);
+      const probe = await mcpTool(url, conn.sid, 'openfinance_list_accounts', {});
+      if (!probe) return json({ error: 'api_indisponivel' }, 400);
+      const accounts = probe.results || probe.accounts || [];
       const { error } = await supa.from('bank_link').upsert({
-        user_id: uid, client_id: 'mcpai', client_secret: key,
-        item_ids: [found.base],
+        user_id: uid, client_id: 'mcpai', client_secret: url, item_ids: [],
       });
       if (error) return json({ error: 'db' }, 500);
-      return json({ ok: true, accounts: (found.accounts || []).length });
+      return json({ ok: true, accounts: accounts.length });
     }
 
     if (action === 'save') { // legado Pluggy
@@ -214,16 +242,9 @@ Deno.serve(async (req) => {
     if (!link) return json({ error: 'not_linked' }, 400);
     const from = /^\d{4}-\d{2}-\d{2}$/.test(body.from || '') ? body.from : new Date().toISOString().slice(0, 8) + '01';
 
-    let result: any;
-    if (link.client_id === 'mcpai') {
-      const meta = { base: (link.item_ids || [])[0] || null };
-      result = await mcpSync(link.client_secret, meta, from);
-      if (result.ok && result.base && result.base !== meta.base) {
-        await supa.from('bank_link').update({ item_ids: [result.base] }).eq('user_id', uid);
-      }
-    } else {
-      result = await pluggySync(link, from);
-    }
+    const result: any = link.client_id === 'mcpai'
+      ? await mcpSync(link.client_secret, from)
+      : await pluggySync(link, from);
     if (result.error) return json({ error: result.error }, 400);
     await supa.from('bank_link').update({ last_sync: new Date().toISOString() }).eq('user_id', uid);
     return json({ ok: true, items: result.items, tx: result.tx, cards: result.cards });

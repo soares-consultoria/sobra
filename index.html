@@ -564,11 +564,11 @@ nav.bottom button svg{width:22px; height:22px}
       <div class="hint" style="margin:0 0 10px">Opcional: seus gastos e receitas entram sozinhos no Sobra, direto do banco, via <b>Banco MCP</b> (Open Finance oficial). São 3 passos, feitos uma única vez:</div>
       <div class="hint" style="margin:0 0 12px">
         <b>1.</b> Crie sua conta no <a href="https://banco.mcp.ai" target="_blank" style="color:var(--accent)">banco.mcp.ai</a> e conecte lá os seus bancos — a autorização acontece no ambiente do próprio banco. Você nunca digita a senha do banco no Sobra.<br>
-        <b>2.</b> No painel <a href="https://app.mcp.ai" target="_blank" style="color:var(--accent)">app.mcp.ai</a>, abra <b>API → Keys</b> e crie uma chave de acesso.<br>
-        <b>3.</b> Cole a chave abaixo. Pronto — o Sobra encontra suas contas sozinho.
+        <b>2.</b> Na página inicial do painel <a href="https://app.mcp.ai" target="_blank" style="color:var(--accent)">app.mcp.ai</a>, toque em <b>Copiar URL</b>.<br>
+        <b>3.</b> Cole o link abaixo. Pronto — o Sobra encontra suas contas sozinho.
       </div>
-      <div class="f"><label>Chave de acesso (começa com sk_live)</label><input id="bankKey" type="password" autocomplete="off" placeholder="sk_live_…"></div>
-      <div class="hint" style="margin:0 0 4px">A chave fica guardada com segurança na sua conta — só você tem acesso (nem o acesso familiar vê). Desconectar apaga a chave na hora.</div>
+      <div class="f"><label>Link de conexão (começa com https://api.mcp.ai)</label><input id="bankKey" type="password" autocomplete="off" placeholder="https://api.mcp.ai/…"></div>
+      <div class="hint" style="margin:0 0 4px">O link fica guardado com segurança na sua conta — só você tem acesso (nem o acesso familiar vê). Desconectar apaga o link na hora.</div>
       <div class="hint" style="margin:0 0 4px">💳 <b>Cartão de crédito:</b> conectando o cartão, cada compra entra como despesa no dia em que acontece, e o pagamento da fatura é tratado como movimentação entre contas (não conta duas vezes). Dica: se você tinha uma recorrente para a fatura desse cartão, remova-a para não duplicar.</div>
     </div>
     <div id="bankLinked" style="display:none">
@@ -1505,7 +1505,7 @@ async function bankSyncNow(showFeedback){
     const from = todayISO().slice(0,7)+'-01';
     const res = await bankCall({action:'sync', from});
     if(res.error){
-      if(showFeedback!==false) alert(res.error==='invalid_credentials'? 'A chave não foi aceita. Confira em app.mcp.ai → API → Keys e tente de novo.' : 'Não foi possível sincronizar agora. Tente de novo em instantes.');
+      if(showFeedback!==false) alert(res.error==='invalid_credentials'? 'O link de conexão não foi aceito. Abra app.mcp.ai, toque em "Copiar URL" e salve de novo aqui.' : 'Não foi possível sincronizar agora. Tente de novo em instantes.');
       return;
     }
     /* transferências entre as próprias contas não são receita nem despesa:
@@ -1565,12 +1565,12 @@ $('#bankBtn') && ($('#bankBtn').onclick=async ()=>{ bankUI(); $('#bankOverlay').
 $('#bankCancel') && ($('#bankCancel').onclick=()=>$('#bankOverlay').classList.remove('show'));
 $('#bankSave') && ($('#bankSave').onclick=async ()=>{
   const key=$('#bankKey').value.trim();
-  if(!key || key.indexOf('sk_live')!==0){ alert('Cole a chave de acesso do Banco MCP (ela começa com sk_live). Você a cria em app.mcp.ai → API → Keys.'); return; }
+  if(!key || !/^(https:\/\/)?api\.mcp\.ai\//.test(key)){ alert('Cole o link de conexão do Banco MCP (ele começa com https://api.mcp.ai). Você o encontra na página inicial de app.mcp.ai, botão "Copiar URL".'); return; }
   $('#bankSave').disabled=true;
   try{
     const res = await bankCall({action:'save_mcp', key});
     if(res.error){
-      alert(res.error==='invalid_credentials'? 'A chave não foi aceita. Confira em app.mcp.ai → API → Keys (copie e cole para evitar erros).' : 'Não foi possível falar com o Banco MCP agora. Tente de novo em instantes.');
+      alert(res.error==='invalid_credentials'? 'O link não foi aceito. Abra app.mcp.ai, toque em "Copiar URL" na página inicial e cole de novo.' : 'Não foi possível falar com o Banco MCP agora. Tente de novo em instantes.');
       return;
     }
     bankInfo={linked:true, items:res.accounts||0, last_sync:null};
