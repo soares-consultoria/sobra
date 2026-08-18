@@ -569,6 +569,7 @@ nav.bottom button svg{width:22px; height:22px}
       </div>
       <div class="f"><label>Link de conexão (começa com https://api.mcp.ai)</label><input id="bankKey" type="password" autocomplete="off" placeholder="https://api.mcp.ai/…"></div>
       <div class="hint" style="margin:0 0 4px">O link fica guardado com segurança na sua conta — só você tem acesso (nem o acesso familiar vê). Desconectar apaga o link na hora.</div>
+      <div class="hint" style="margin:0 0 4px">🔁 <b>Recorrentes:</b> quando o lançamento real chega do banco (aluguel, salário, assinatura…), ele casa com o previsto da recorrente — vira um só, sem duplicar.</div>
       <div class="hint" style="margin:0 0 4px">💳 <b>Cartão de crédito:</b> conectando o cartão, cada compra entra como despesa no dia em que acontece, e o pagamento da fatura é tratado como movimentação entre contas (não conta duas vezes). Dica: se você tinha uma recorrente para a fatura desse cartão, remova-a para não duplicar.</div>
     </div>
     <div id="bankLinked" style="display:none">
@@ -972,7 +973,7 @@ function renderExtrato(){
     return `<div class="txgroup"><div class="gh"><span>${fmtDay(d)}</span><span>${sum!==0?fmt0(sum):''}</span></div>`+
       items.map(t=>`<div class="tx ${t.pending?'pending':''}" data-tx="${t.id}">
         <div class="cdot" style="background:${catColor(t.category)}22">${CAT_ICON[t.category]||'📦'}</div>
-        <div class="info"><div class="d">${esc(t.desc)}</div><div class="c">${t.category}${t.recId?' <span class="badge">recorrente</span>':''}${t.pending?' <span class="badge">previsto</span>':''}</div></div>
+        <div class="info"><div class="d">${esc(t.desc)}</div><div class="c">${t.category}${t.recId?' <span class="badge">recorrente</span>':''}${t.pending?' <span class="badge">previsto</span>':''}${t.pid?(t.ctype==='CREDIT'?' <span class="badge">💳 cartão</span>':' <span class="badge">🏦 conta</span>'):''}</div></div>
         <div class="a ${t.type==='receita'?'pos':''}">${t.type==='receita'?'+':'−'}${fmt(t.amount)}</div>
       </div>`).join('')+'</div>';
   }).join('');
@@ -1548,7 +1549,7 @@ async function bankSyncNow(showFeedback){
       if(x.ctype==='CREDIT' && x.tipo==='receita' && (/pagamento|pgto|pagto|payment/i.test(x.desc||'') || /credit card payment/i.test(x.cat||''))) skip.add(x.id);
       if(x.ctype!=='CREDIT' && x.tipo==='despesa' && (/gastos cartao|pagamento de fatura|pgto de fatura|pagto.*fatura/i.test(x.desc||'') || /credit card (fees|payment)/i.test(x.cat||''))) skip.add(x.id);
     }
-    let added=0, transf=0;
+    let added=0, transf=0, conc=0;
     for(const x of txs){
       if(skip.has(x.id)){ transf++; continue; }
       if(state.tx.some(t=>t.pid===x.id)) continue;
@@ -1556,16 +1557,29 @@ async function bankSyncNow(showFeedback){
          se já existe importada com mesma data, valor e descrição, não entra de novo */
       if(x.ctype==='CREDIT' && state.tx.some(t=>t.pid && t.date===x.date && (t.desc||'')===(x.desc||'Lançamento do banco') && Math.abs(t.amount-Math.abs(+x.amount||0))<0.005)) continue;
       const tipo = x.tipo==='receita' ? 'receita' : 'despesa';
-      state.tx.push({ id:uid(), pid:x.id, desc:x.desc||'Lançamento do banco', amount:Math.abs(+x.amount||0), type:tipo, category:mapBankCat(x.cat, x.desc, tipo), date:x.date||todayISO(), pending:false });
+      const valor = Math.abs(+x.amount||0);
+      /* concilia com recorrente prevista (aluguel, salário, assinatura…):
+         mesmo tipo, valor ~igual (±2%, mín. R$1) e até 7 dias de diferença.
+         O previsto vira o lançamento real — não entra duplicado. */
+      const alvo = state.tx.find(t=>t.recId && !t.pid && t.type===tipo
+        && Math.abs(t.amount-valor)<=Math.max(1, t.amount*0.02)
+        && Math.abs(new Date(t.date)-new Date(x.date))<=7*864e5);
+      if(alvo){
+        alvo.pending=false; alvo.pid=x.id; alvo.amount=valor; alvo.date=x.date||alvo.date;
+        alvo.ctype=x.ctype||''; alvo.src=x.conta||'';
+        conc++; continue;
+      }
+      state.tx.push({ id:uid(), pid:x.id, desc:x.desc||'Lançamento do banco', amount:valor, type:tipo, category:mapBankCat(x.cat, x.desc, tipo), date:x.date||todayISO(), pending:false, ctype:x.ctype||'', src:x.conta||'' });
       added++;
     }
     if(Array.isArray(res.cards)) state.cards = res.cards;
-    if(added || Array.isArray(res.cards)){ save(); render(); }
+    if(added || conc || Array.isArray(res.cards)){ save(); render(); }
     bankInfo = { linked:true, items:res.items, last_sync:new Date().toISOString() };
     bankUI();
     if(showFeedback!==false){
-      const extra = transf? ' ('+Math.round(transf/2)+' transferência'+(transf>2?'s':'')+' entre suas contas ignorada'+(transf>2?'s':'')+')' : '';
-      toast(added? added+' lançamento'+(added>1?'s':'')+' importado'+(added>1?'s':'')+' do banco ✓'+extra : 'Tudo em dia — nada novo no banco ✓'+extra);
+      const extra = (transf? ' ('+Math.round(transf/2)+' transferência'+(transf>2?'s':'')+' entre suas contas ignorada'+(transf>2?'s':'')+')' : '')
+        + (conc? ' · '+conc+' recorrente'+(conc>1?'s':'')+' conciliada'+(conc>1?'s':'')+' ✓' : '');
+      toast(added||conc? (added+conc)+' lançamento'+((added+conc)>1?'s':'')+' do banco ✓'+extra : 'Tudo em dia — nada novo no banco ✓'+extra);
     }
   }catch(e){
     if(showFeedback!==false) alert('Não foi possível falar com o serviço agora. Tente de novo em instantes.');
