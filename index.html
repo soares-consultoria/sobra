@@ -578,6 +578,7 @@ nav.bottom button svg{width:22px; height:22px}
       <button class="ghost" id="bankCancel">Fechar</button>
       <button class="primary" id="bankSave">Salvar e sincronizar</button>
       <button class="primary" id="bankSync" style="display:none">Sincronizar agora</button>
+      <button class="ghost" id="bankReimport" style="display:none">Reimportar do zero</button>
       <button class="danger" id="bankUnlink" style="display:none">Desconectar</button>
     </div>
   </div>
@@ -888,7 +889,7 @@ function renderHome(){
   const hc=$('#homeCards');
   if(hc){
     if(state.cards && state.cards.length){
-      hc.innerHTML = '<h2 class="sec">Cartões de crédito — fatura atual</h2><div class="filters">'+
+      hc.innerHTML = '<h2 class="sec">Cartões de crédito — fatura em aberto (parcial)</h2><div class="filters">'+
         state.cards.map(c=>{
           const vence = c.vence? ' · vence dia '+(+c.vence.slice(8,10)) : '';
           return `<button class="chip">💳 ${esc(c.nome)} · <b>${fmt0(c.fatura)}</b>${vence}</button>`;
@@ -1481,6 +1482,7 @@ function bankUI(){
   $('#bankLinked').style.display = linked?'':'none';
   $('#bankSave').style.display = linked?'none':'';
   $('#bankSync').style.display = linked?'':'none';
+  $('#bankReimport') && ($('#bankReimport').style.display = linked?'':'none');
   $('#bankUnlink').style.display = linked?'':'none';
   if(linked){
     const ls = bankInfo.last_sync? new Date(bankInfo.last_sync).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : null;
@@ -1513,26 +1515,46 @@ async function bankSyncNow(showFeedback){
        2) pares espelhados (mesmo valor, sentidos opostos, contas diferentes, até 2 dias) são ignorados. */
     const txs = (res.tx||[]).filter(x=>x && x.id);
     const skip = new Set();
+    /* 1) transferência entre contas da mesma pessoa (marcada pelo banco) */
     for(const x of txs){ if(/same person|mesma titular|entre contas pr/i.test(x.cat||'')) skip.add(x.id); }
+    /* 2) estorno/devolução na MESMA conta: o par se anula */
+    const usado = new Set();
     for(let i=0;i<txs.length;i++){
-      if(skip.has(txs[i].id)) continue;
       for(let j=i+1;j<txs.length;j++){
-        if(skip.has(txs[j].id)) continue;
         const a=txs[i], b=txs[j];
-        if(a.tipo!==b.tipo && a.conta!==b.conta && Math.abs(a.amount-b.amount)<0.005
-           && Math.abs(new Date(a.date)-new Date(b.date))<=3*864e5){ skip.add(a.id); skip.add(b.id); break; }
+        if(usado.has(a.id)||usado.has(b.id)) continue;
+        if(a.conta===b.conta && a.tipo!==b.tipo && Math.abs(a.amount-b.amount)<0.005
+           && Math.abs(new Date(a.date)-new Date(b.date))<=3*864e5
+           && /estorno|devolu|cancelad|refund/i.test((a.desc||'')+' '+(b.desc||''))){
+          skip.add(a.id); skip.add(b.id); usado.add(a.id); usado.add(b.id); break;
+        }
       }
     }
-    /* pagamento de fatura que chega no cartão sem par (conta corrente não conectada):
-       é transferência, não receita — ignora. Estornos/reembolsos continuam entrando. */
+    /* 3) pares espelhados entre contas diferentes (transferência / pagamento de fatura).
+       Uma perna já marcada como transferência também anula o espelho dela — cada uma só uma vez. */
+    for(let i=0;i<txs.length;i++){
+      if(usado.has(txs[i].id)) continue;
+      for(let j=i+1;j<txs.length;j++){
+        if(usado.has(txs[j].id)) continue;
+        const a=txs[i], b=txs[j];
+        if(a.tipo!==b.tipo && a.conta!==b.conta && Math.abs(a.amount-b.amount)<0.005
+           && Math.abs(new Date(a.date)-new Date(b.date))<=3*864e5){ skip.add(a.id); skip.add(b.id); usado.add(a.id); usado.add(b.id); break; }
+      }
+    }
+    /* 4) pernas de pagamento de fatura que ficaram sem par (outra conta fora do ar ou não conectada):
+       é transferência, não receita/despesa. Estornos e reembolsos continuam entrando. */
     for(const x of txs){
       if(skip.has(x.id)) continue;
-      if(x.ctype==='CREDIT' && x.tipo==='receita' && /pagamento|pgto|payment/i.test(x.desc||'')) skip.add(x.id);
+      if(x.ctype==='CREDIT' && x.tipo==='receita' && (/pagamento|pgto|pagto|payment/i.test(x.desc||'') || /credit card payment/i.test(x.cat||''))) skip.add(x.id);
+      if(x.ctype!=='CREDIT' && x.tipo==='despesa' && (/gastos cartao|pagamento de fatura|pgto de fatura|pagto.*fatura/i.test(x.desc||'') || /credit card (fees|payment)/i.test(x.cat||''))) skip.add(x.id);
     }
     let added=0, transf=0;
     for(const x of txs){
       if(skip.has(x.id)){ transf++; continue; }
       if(state.tx.some(t=>t.pid===x.id)) continue;
+      /* cartão: quando a fatura fecha, o banco pode reenviar a mesma compra com outro código —
+         se já existe importada com mesma data, valor e descrição, não entra de novo */
+      if(x.ctype==='CREDIT' && state.tx.some(t=>t.pid && t.date===x.date && (t.desc||'')===(x.desc||'Lançamento do banco') && Math.abs(t.amount-Math.abs(+x.amount||0))<0.005)) continue;
       const tipo = x.tipo==='receita' ? 'receita' : 'despesa';
       state.tx.push({ id:uid(), pid:x.id, desc:x.desc||'Lançamento do banco', amount:Math.abs(+x.amount||0), type:tipo, category:mapBankCat(x.cat, x.desc, tipo), date:x.date||todayISO(), pending:false });
       added++;
@@ -1582,6 +1604,13 @@ $('#bankSave') && ($('#bankSave').onclick=async ()=>{
   finally{ $('#bankSave').disabled=false; }
 });
 $('#bankSync') && ($('#bankSync').onclick=()=>bankSyncNow());
+$('#bankReimport') && ($('#bankReimport').onclick=async ()=>{
+  if(!confirm('Remove TODOS os lançamentos importados do banco (os que você criou à mão ficam) e importa tudo de novo, já com as regras novas. Continuar?')) return;
+  state.tx = state.tx.filter(t=>!t.pid);
+  state.cards = [];
+  save(); render();
+  await bankSyncNow();
+});
 $('#bankUnlink') && ($('#bankUnlink').onclick=async ()=>{
   if(!confirm('Desconectar apaga os códigos de acesso guardados e para as sincronizações. Os lançamentos já importados continuam no seu orçamento. Continuar?')) return;
   try{
