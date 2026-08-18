@@ -79,6 +79,43 @@ async function mcpTool(url: string, sid: string | null, name: string, args: any)
   return res;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// repete em caso de rate-limit do provedor (2 req/s) ou falha transitória
+async function mcpToolRetry(url: string, sid: string | null, name: string, args: any): Promise<any | null> {
+  for (let i = 0; i < 4; i++) {
+    const d = await mcpTool(url, sid, name, args);
+    const rl = d && d.error && (d.error.status === 429 || (d.error.details && d.error.details.code === 'RATE_LIMITED'));
+    if (rl) { await sleep((d.error.details && d.error.details.retry_after_ms) || 1200); continue; }
+    if (d === null && i < 2) { await sleep(1200); continue; }
+    return d;
+  }
+  return null;
+}
+
+// aplicação/resgate/rentabilidade de investimento não é receita nem despesa
+function isInvest(x: any): boolean {
+  if (/RESGATE_APLIC|APLICACAO/i.test(String(x.operationType || ''))) return true;
+  if (/invest|fixed income|proceeds interests/i.test(String(x.category || ''))) return true;
+  if (String(x.categoryId || '').slice(0, 2) === '03') return true; // árvore "Investments" da Pluggy
+  return false;
+}
+
+// próximo vencimento: mesmo dia do mês do último vencimento informado pelo banco
+function nextDue(d: any, hoje: string): string | null {
+  if (!d) return null;
+  const day = +String(d).slice(8, 10);
+  if (!day) return null;
+  let y = +hoje.slice(0, 4), m = +hoje.slice(5, 7);
+  const mk = (yy: number, mm: number) => {
+    const last = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+    return yy + '-' + String(mm).padStart(2, '0') + '-' + String(Math.min(day, last)).padStart(2, '0');
+  };
+  let cand = mk(y, m);
+  if (cand < hoje) { m++; if (m > 12) { m = 1; y++; } cand = mk(y, m); }
+  return cand;
+}
+
 function normMcpUrl(s: string): string | null {
   s = String(s || '').trim();
   if (/^api\.mcp\.ai\//.test(s)) s = 'https://' + s;
@@ -98,7 +135,7 @@ async function mcpSync(url: string, from: string) {
   if ('error' in conn) return conn;
   const sid = conn.sid;
 
-  const accData = await mcpTool(url, sid, 'openfinance_list_accounts', {});
+  const accData = await mcpToolRetry(url, sid, 'openfinance_list_accounts', {});
   if (!accData) return { error: 'api_indisponivel' };
   const accounts = accData.results || accData.accounts || (Array.isArray(accData) ? accData : []);
 
@@ -106,29 +143,48 @@ async function mcpSync(url: string, from: string) {
   const out: any[] = [];
   const cards: any[] = [];
   for (const acc of accounts) {
-    if (acc.type === 'CREDIT') {
-      cards.push({
-        nome: contaLabel(acc),
-        fatura: Math.abs(Number(acc.balance) || 0),
-        vence: acc.creditData && acc.creditData.balanceDueDate ? String(acc.creditData.balanceDueDate).slice(0, 10) : null,
-      });
-    }
     const accId = acc.account_id || acc.id;
     if (!accId) continue;
-    const tData = await mcpTool(url, sid, 'openfinance_list_transactions', { account_id: accId, from });
-    if (!tData) continue;
-    const results = tData.results || tData.transactions || (Array.isArray(tData) ? tData : []);
+    const isCard = acc.type === 'CREDIT';
+    // cartão: janela maior para cobrir todo o ciclo aberto da fatura
+    const d40 = new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10);
+    const fromAcc = isCard && d40 < from ? d40 : from;
+    const tData = await mcpToolRetry(url, sid, 'openfinance_list_transactions', { account_id: accId, from: fromAcc });
+    await sleep(650); // respeita o rate-limit do provedor (2 req/s)
+    const results = tData ? (tData.results || tData.transactions || (Array.isArray(tData) ? tData : [])) : null;
+
+    if (isCard) {
+      // fatura em aberto (parcial) = compras pendentes do ciclo até hoje,
+      // NÃO o saldo devedor total (que inclui parcelas futuras / limite utilizado)
+      if (results) {
+        let fatura = 0;
+        for (const x of results) {
+          const date = String(x.date || '').slice(0, 10);
+          const amt = Number(x.amount) || 0;
+          if (String(x.status || '') === 'PENDING' && x.type === 'DEBIT' && amt > 0 && date <= hoje
+              && String(x.category || '') !== 'Credit card payment') fatura += amt;
+        }
+        cards.push({
+          nome: contaLabel(acc),
+          fatura: Math.round(fatura * 100) / 100,
+          vence: nextDue(acc.creditData && acc.creditData.balanceDueDate, hoje),
+        });
+      }
+    }
+
+    if (!results) continue;
     for (const x of results) {
       const date = String(x.date || '').slice(0, 10);
-      if (!x.id || !date) continue;
+      if (!x.id || !date || date < from) continue;
       if (String(x.status || '') === 'PENDING' && date > hoje) continue; // parcelas/fatura futura
+      if (isInvest(x)) continue; // aplicação/resgate não entra no orçamento
       const amt = Math.abs(Number(x.amount) || 0);
       if (!amt) continue;
       out.push({
         id: x.id, date, desc: x.description || '', amount: amt,
         tipo: (x.type === 'CREDIT') ? 'receita' : 'despesa',
         cat: x.category || null, conta: contaLabel(acc),
-        ctype: acc.type === 'CREDIT' ? 'CREDIT' : 'BANK',
+        ctype: isCard ? 'CREDIT' : 'BANK',
       });
     }
   }
