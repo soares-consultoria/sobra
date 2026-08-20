@@ -146,6 +146,24 @@ h2.sec{font-size:13px; color:var(--muted); font-weight:600; text-transform:upper
   padding:7px 14px; font-size:13px; color:var(--ink2); white-space:nowrap;
 }
 .chip.on{background:var(--ink); color:var(--page); border-color:var(--ink); font-weight:600}
+/* bank cards & investments */
+.bankcards{display:grid; gap:10px}
+@media(min-width:700px){ .bankcards{grid-template-columns:1fr 1fr} }
+.bankcard{background:var(--surface); border:1px solid var(--ring); border-radius:14px; padding:12px 14px}
+.bankcard .bc-top{display:flex; justify-content:space-between; align-items:baseline; gap:8px}
+.bankcard .bc-name{font-size:14px; font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.bankcard .bc-due{font-size:12px; color:var(--muted); white-space:nowrap}
+.bankcard .bc-val{font-size:21px; font-weight:800; margin:4px 0 0}
+.bankcard .bc-lbl{font-size:11.5px; font-weight:500; color:var(--muted); display:block; margin-top:1px}
+.bankcard .bc-bar{height:6px; background:var(--ring); border-radius:4px; overflow:hidden; margin:9px 0 5px}
+.bankcard .bc-bar i{display:block; height:100%; background:var(--accent); border-radius:4px}
+.bankcard .bc-sub{font-size:12px; color:var(--muted)}
+.invrow{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 0; border-bottom:1px dashed var(--ring); font-size:13.5px}
+.invrow:last-child{border-bottom:0; padding-bottom:2px}
+.invrow .n{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.invrow .b{font-size:11.5px; color:var(--muted); display:block}
+.invrow .v{font-weight:700; white-space:nowrap; text-align:right}
+.invrow .r{font-size:11.5px; color:var(--good); display:block}
 /* recurring */
 .recitem{display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--ring);
   border-radius:14px; padding:12px; margin-bottom:8px; box-shadow:var(--shadow)}
@@ -276,7 +294,7 @@ nav.bottom button svg{width:22px; height:22px}
   #v-home #heroCard{ grid-column:2; grid-row:span 2; align-self:stretch }
   #v-home #pendWrap{ grid-column:1 }
   #v-home #homeBoxes{ grid-column:1/-1 }
-  #v-home #homeCards{ grid-column:1/-1 }
+  #v-home #homeCards, #v-home #homeInvest{ grid-column:1/-1 }
   #heroCard .val{ font-size:40px }
   /* listas em duas colunas */
   #recIncomes, #recExpenses{ display:grid; grid-template-columns:1fr 1fr; gap:8px }
@@ -338,6 +356,7 @@ nav.bottom button svg{width:22px; height:22px}
 
     <div id="pendWrap"></div>
     <div id="homeCards"></div>
+    <div id="homeInvest"></div>
     <div id="homeBoxes"></div>
 
     <h2 class="sec" id="catTitle" style="display:none">Para onde foi o dinheiro</h2>
@@ -769,10 +788,10 @@ const CONFIGURED = SUPA_URL.indexOf('https')===0;
 const CLOUD = CONFIGURED && !!window.supabase;
 let sb=null, user=null, syncTimer=null, dirty=false;
 let dataOwner=null, shareInfo=null; /* acesso familiar: dataOwner = dono do orçamento em uso */
-let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], cards:[], bankIgnore:[], theme:null, view: todayISO().slice(0,7) };
+let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], cards:[], invest:[], bankIgnore:[], theme:null, view: todayISO().slice(0,7) };
 function lsKey(){ const id=dataOwner||(user&&user.id); return id ? LS+'.'+id : LS; }
-function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov, cards:state.cards, bankIgnore:state.bankIgnore}; }
-function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; state.cards=s.cards||[]; state.bankIgnore=s.bankIgnore||[]; }
+function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov, cards:state.cards, invest:state.invest, bankIgnore:state.bankIgnore}; }
+function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; state.cards=s.cards||[]; state.invest=s.invest||[]; state.bankIgnore=s.bankIgnore||[]; }
 function load(){ try{ const s=JSON.parse(localStorage.getItem(lsKey())); if(s) adopt(s); }catch(e){} }
 function save(){
   localStorage.setItem(lsKey(), JSON.stringify(snapshot()));
@@ -886,16 +905,42 @@ function renderHome(){
   if(f.val<0) heroSub += (heroSub?' — ':'') + (f.isCurrent ? 'Não é valor disponível: é quanto vai FALTAR se nada mudar.' : 'O mês fechou no vermelho.');
   $('#heroSub').textContent = heroSub;
 
-  // cartões de crédito conectados (fatura atual vinda do banco)
+  // cartões de crédito conectados (fatura em aberto vinda do banco)
   const hc=$('#homeCards');
   if(hc){
     if(state.cards && state.cards.length){
-      hc.innerHTML = '<h2 class="sec">Cartões de crédito — fatura em aberto (parcial)</h2><div class="filters">'+
+      hc.innerHTML = '<h2 class="sec">Cartões de crédito</h2><div class="bankcards">'+
         state.cards.map(c=>{
-          const vence = c.vence? ' · vence dia '+(+c.vence.slice(8,10)) : '';
-          return `<button class="chip">💳 ${esc(c.nome)} · <b>${fmt0(c.fatura)}</b>${vence}</button>`;
+          const vence = c.vence? 'vence dia '+(+c.vence.slice(8,10))+'/'+c.vence.slice(5,7) : '';
+          const temLim = +c.limite>0;
+          const usoPct = temLim? Math.min(100, Math.round((+c.divida||0)/+c.limite*100)) : 0;
+          const barra = temLim? `<div class="bc-bar"><i style="width:${usoPct}%"></i></div>
+            <div class="bc-sub">limite usado: <b>${fmt0(c.divida||0)}</b> de ${fmt0(c.limite)} (${usoPct}%) · disponível ${fmt0(c.disponivel||0)}</div>` : '';
+          return `<div class="bankcard">
+            <div class="bc-top"><span class="bc-name">💳 ${esc(c.nome)}</span><span class="bc-due">${vence}</span></div>
+            <div class="bc-val">${fmt0(c.fatura)}<span class="bc-lbl">fatura em aberto (parcial) — compras do ciclo até hoje</span></div>
+            ${barra}
+          </div>`;
         }).join('')+'</div>';
     } else hc.innerHTML='';
+  }
+
+  // investimentos conectados (informativo — não entram em receitas/despesas)
+  const hi=$('#homeInvest');
+  if(hi){
+    if(state.invest && state.invest.length){
+      const totalInv = state.invest.reduce((s,i)=>s+(+i.saldo||0),0);
+      hi.innerHTML = '<h2 class="sec">Investimentos</h2><div class="bankcard">'+
+        `<div class="bc-top"><span class="bc-name">💰 Total investido</span></div>
+         <div class="bc-val">${fmt0(totalInv)}<span class="bc-lbl">${state.invest.length} posiç${state.invest.length>1?'ões':'ão'} · atualizado na última sincronização · não entra nas receitas/despesas do mês</span></div>`+
+        state.invest.map(i=>{
+          const rent = (i.rent12!==null && i.rent12!==undefined)? `<span class="r">+${(+i.rent12).toLocaleString('pt-BR',{maximumFractionDigits:1})}% em 12m</span>` : '';
+          return `<div class="invrow">
+            <div class="n">${esc(i.nome)}<span class="b">${esc(i.banco||'')}${i.tipo?' · '+esc(String(i.tipo).replace(/_/g,' ').toLowerCase()):''}</span></div>
+            <div class="v">${fmt0(i.saldo)}${rent}</div>
+          </div>`;
+        }).join('')+'</div>';
+    } else hi.innerHTML='';
   }
 
   // caixinhas na home
@@ -1589,7 +1634,8 @@ async function bankSyncNow(showFeedback){
       added++;
     }
     if(Array.isArray(res.cards)) state.cards = res.cards;
-    if(added || conc || Array.isArray(res.cards)){ save(); render(); }
+    if(Array.isArray(res.invest)) state.invest = res.invest;
+    if(added || conc || Array.isArray(res.cards) || Array.isArray(res.invest)){ save(); render(); }
     bankInfo = { linked:true, items:res.items, last_sync:new Date().toISOString() };
     bankUI();
     if(showFeedback!==false){
@@ -1638,6 +1684,7 @@ $('#bankReimport') && ($('#bankReimport').onclick=async ()=>{
   if(!confirm('Remove TODOS os lançamentos importados do banco (os que você criou à mão ficam) e importa tudo de novo, já com as regras novas. Continuar?')) return;
   state.tx = state.tx.filter(t=>!t.pid);
   state.cards = [];
+  state.invest = [];
   save(); render();
   await bankSyncNow();
 });
@@ -1645,7 +1692,7 @@ $('#bankUnlink') && ($('#bankUnlink').onclick=async ()=>{
   if(!confirm('Desconectar apaga os códigos de acesso guardados e para as sincronizações. Os lançamentos já importados continuam no seu orçamento. Continuar?')) return;
   try{
     const res = await bankCall({action:'delete'});
-    if(res && res.ok){ bankInfo=null; state.cards=[]; save(); render(); bankUI(); toast('Banco desconectado ✓'); }
+    if(res && res.ok){ bankInfo=null; state.cards=[]; state.invest=[]; save(); render(); bankUI(); toast('Banco desconectado ✓'); }
   }catch(e){ alert('Não foi possível falar com o serviço agora. Tente de novo em instantes.'); }
 });
 /* ============ ajuda ============ */
