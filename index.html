@@ -769,10 +769,10 @@ const CONFIGURED = SUPA_URL.indexOf('https')===0;
 const CLOUD = CONFIGURED && !!window.supabase;
 let sb=null, user=null, syncTimer=null, dirty=false;
 let dataOwner=null, shareInfo=null; /* acesso familiar: dataOwner = dono do orçamento em uso */
-let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], cards:[], theme:null, view: todayISO().slice(0,7) };
+let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], cards:[], bankIgnore:[], theme:null, view: todayISO().slice(0,7) };
 function lsKey(){ const id=dataOwner||(user&&user.id); return id ? LS+'.'+id : LS; }
-function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov, cards:state.cards}; }
-function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; state.cards=s.cards||[]; }
+function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov, cards:state.cards, bankIgnore:state.bankIgnore}; }
+function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; state.cards=s.cards||[]; state.bankIgnore=s.bankIgnore||[]; }
 function load(){ try{ const s=JSON.parse(localStorage.getItem(lsKey())); if(s) adopt(s); }catch(e){} }
 function save(){
   localStorage.setItem(lsKey(), JSON.stringify(snapshot()));
@@ -1240,7 +1240,19 @@ function setTxType(ty){
 }
 $$('#txType button').forEach(b=>b.onclick=()=>setTxType(b.dataset.t));
 $('#txCancel').onclick=()=>$('#txOverlay').classList.remove('show');
-$('#txDel').onclick=()=>{ if(confirm('Excluir este lançamento?')){ state.tx=state.tx.filter(t=>t.id!==editId); save(); $('#txOverlay').classList.remove('show'); render(); } };
+$('#txDel').onclick=()=>{
+  const alvo = state.tx.find(t=>t.id===editId);
+  const veioDoBanco = !!(alvo && alvo.pid);
+  const msg = veioDoBanco ? 'Excluir este lançamento? Ele veio do banco — não será importado de novo nas próximas sincronizações.' : 'Excluir este lançamento?';
+  if(confirm(msg)){
+    if(veioDoBanco){
+      state.bankIgnore = state.bankIgnore||[];
+      state.bankIgnore.push({ pid:alvo.pid, date:alvo.date, amount:alvo.amount, desc:alvo.desc||'' });
+      if(state.bankIgnore.length>500) state.bankIgnore = state.bankIgnore.slice(-500);
+    }
+    state.tx=state.tx.filter(t=>t.id!==editId); save(); $('#txOverlay').classList.remove('show'); render();
+  }
+};
 $('#txSave').onclick=()=>{
   const t=state.tx.find(x=>x.id===editId); if(!t) return;
   const amt=parseMoney($('#txAmt').value);
@@ -1553,17 +1565,21 @@ async function bankSyncNow(showFeedback){
     for(const x of txs){
       if(skip.has(x.id)){ transf++; continue; }
       if(state.tx.some(t=>t.pid===x.id)) continue;
-      /* cartão: quando a fatura fecha, o banco pode reenviar a mesma compra com outro código —
-         se já existe importada com mesma data, valor e descrição, não entra de novo */
-      if(x.ctype==='CREDIT' && state.tx.some(t=>t.pid && t.date===x.date && (t.desc||'')===(x.desc||'Lançamento do banco') && Math.abs(t.amount-Math.abs(+x.amount||0))<0.005)) continue;
       const tipo = x.tipo==='receita' ? 'receita' : 'despesa';
       const valor = Math.abs(+x.amount||0);
-      /* concilia com recorrente prevista (aluguel, salário, assinatura…):
-         mesmo tipo, valor ~igual (±2%, mín. R$1) e até 7 dias de diferença.
-         O previsto vira o lançamento real — não entra duplicado. */
-      const alvo = state.tx.find(t=>t.recId && !t.pid && t.type===tipo
+      /* lançamentos que o usuário excluiu não voltam nunca mais */
+      const ign = state.bankIgnore||[];
+      if(ign.some(g=>g.pid===x.id || (g.date===x.date && (g.desc||'')===(x.desc||'') && Math.abs((+g.amount||0)-valor)<0.005))) continue;
+      /* cartão: quando a fatura fecha, o banco pode reenviar a mesma compra com outro código —
+         se já existe importada com mesma data, valor e descrição, não entra de novo */
+      if(x.ctype==='CREDIT' && state.tx.some(t=>t.pid && t.date===x.date && (t.desc||'')===(x.desc||'Lançamento do banco') && Math.abs(t.amount-valor)<0.005)) continue;
+      /* concilia com o que o usuário já registrou:
+         - recorrente prevista (aluguel, salário…): valor ±2% (mín. R$1), até 7 dias
+         - lançamento manual (digitado): valor ±2% (mín. R$1), até 3 dias
+         O registro do usuário vira o lançamento real — não entra duplicado. */
+      const alvo = state.tx.find(t=>!t.pid && t.type===tipo
         && Math.abs(t.amount-valor)<=Math.max(1, t.amount*0.02)
-        && Math.abs(new Date(t.date)-new Date(x.date))<=7*864e5);
+        && Math.abs(new Date(t.date)-new Date(x.date))<=(t.recId?7:3)*864e5);
       if(alvo){
         alvo.pending=false; alvo.pid=x.id; alvo.amount=valor; alvo.date=x.date||alvo.date;
         alvo.ctype=x.ctype||''; alvo.src=x.conta||'';
@@ -1578,7 +1594,7 @@ async function bankSyncNow(showFeedback){
     bankUI();
     if(showFeedback!==false){
       const extra = (transf? ' ('+Math.round(transf/2)+' transferência'+(transf>2?'s':'')+' entre suas contas ignorada'+(transf>2?'s':'')+')' : '')
-        + (conc? ' · '+conc+' recorrente'+(conc>1?'s':'')+' conciliada'+(conc>1?'s':'')+' ✓' : '');
+        + (conc? ' · '+conc+' conciliado'+(conc>1?'s':'')+' com o que você já tinha ✓' : '');
       toast(added||conc? (added+conc)+' lançamento'+((added+conc)>1?'s':'')+' do banco ✓'+extra : 'Tudo em dia — nada novo no banco ✓'+extra);
     }
   }catch(e){
