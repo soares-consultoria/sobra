@@ -151,14 +151,14 @@ h2.sec{font-size:13px; color:var(--muted); font-weight:600; text-transform:upper
 @media(min-width:700px){ .bankcards{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} }
 #homeCards, #homeInvest{min-width:0; max-width:100%; overflow:hidden}
 .bankcard{background:var(--surface); border:1px solid var(--ring); border-radius:14px; padding:12px 14px; min-width:0; max-width:100%; overflow:hidden; box-sizing:border-box}
-.bankcard .bc-top{display:flex; justify-content:space-between; align-items:baseline; gap:8px; min-width:0}
-.bankcard .bc-name{font-size:14px; font-weight:700; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.bankcard .bc-due{font-size:12px; color:var(--muted); white-space:nowrap; flex-shrink:0}
-.bankcard .bc-val{font-size:21px; font-weight:800; margin:4px 0 0}
-.bankcard .bc-lbl{font-size:11.5px; font-weight:500; color:var(--muted); display:block; margin-top:1px}
-.bankcard .bc-bar{height:6px; background:var(--ring); border-radius:4px; overflow:hidden; margin:9px 0 5px}
-.bankcard .bc-bar i{display:block; height:100%; background:var(--accent); border-radius:4px}
-.bankcard .bc-sub{font-size:12px; color:var(--muted); overflow-wrap:anywhere}
+.bankcard .bc-top, .box .bc-top{display:flex; justify-content:space-between; align-items:baseline; gap:8px; min-width:0}
+.bankcard .bc-name, .box .bc-name{font-size:14px; font-weight:700; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.bankcard .bc-due, .box .bc-due{font-size:12px; color:var(--muted); white-space:nowrap; flex-shrink:0}
+.bankcard .bc-val, .box .bc-val{font-size:21px; font-weight:800; margin:4px 0 0; font-variant-numeric:tabular-nums}
+.bankcard .bc-lbl, .box .bc-lbl{font-size:11.5px; font-weight:500; color:var(--muted); display:block; margin-top:1px}
+.bankcard .bc-bar, .box .bc-bar{height:6px; background:var(--ring); border-radius:4px; overflow:hidden; margin:9px 0 5px}
+.bankcard .bc-bar i, .box .bc-bar i{display:block; height:100%; background:var(--accent); border-radius:4px}
+.bankcard .bc-sub, .box .bc-sub{font-size:12px; color:var(--muted); overflow-wrap:anywhere}
 .invrow{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 0; border-bottom:1px dashed var(--ring); font-size:13.5px; min-width:0}
 .invrow:last-child{border-bottom:0; padding-bottom:2px}
 .invrow .n{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
@@ -193,7 +193,7 @@ nav.bottom{
   z-index:50;
 }
 /* caixinhas */
-.box{background:var(--surface); border:1px solid var(--ring); border-radius:14px; padding:13px; margin-bottom:8px; box-shadow:var(--shadow)}
+.box{background:var(--surface); border:1px solid var(--ring); border-radius:14px; padding:12px 14px; margin-bottom:10px; box-shadow:var(--shadow); min-width:0; max-width:100%; overflow:hidden; box-sizing:border-box}
 .box .hd{display:flex; align-items:center; gap:10px}
 .box .hd .ic{font-size:22px}
 .box .hd .nm{flex:1; font-size:14.5px; font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
@@ -1087,13 +1087,16 @@ function renderBoxes(){
           (notStarted?'' : (falta>0.009?`<button style="width:100%; margin-top:8px; border:1.5px solid var(--accent); color:var(--accent); border-radius:10px; padding:9px; font-weight:600; font-size:13px" data-boxplan="${b.id}">Guardar ${fmt0(falta)} deste mês</button>`
                       :`<div class="meta" style="color:var(--good-text)">✓ Plano do mês concluído</div>`));
       }
+      const lbl = b.target
+        ? (pct>=100 ? 'guardado · meta batida! 🎉' : `guardado · ${Math.round(pct)}% da meta · faltam ${fmt0(Math.max(0,b.target-bal))}`)
+        : 'guardado';
       return `<div class="box">
-        <div class="hd" data-boxedit="${b.id}" style="cursor:pointer">
-          <span class="ic">${boxIcon(b.name)}</span>
-          <span class="nm">${esc(b.name)}</span>
-          <span class="bal">${fmt(bal)}</span>
+        <div class="bc-top" data-boxedit="${b.id}" style="cursor:pointer">
+          <span class="bc-name">${boxIcon(b.name)} ${esc(b.name)}</span>
+          ${b.target?`<span class="bc-due">meta ${fmt0(b.target)}</span>`:''}
         </div>
-        ${b.target?`<div class="meta">Meta: ${fmt0(b.target)} · ${Math.round(pct)}% ${pct>=100?'— meta batida! 🎉':''}</div><div class="bar"><i style="width:${Math.max(2,pct)}%"></i></div>`:''}
+        <div class="bc-val" data-boxedit="${b.id}" style="cursor:pointer">${fmt(bal)}<span class="bc-lbl">${lbl}</span></div>
+        ${b.target?`<div class="bc-bar"><i style="width:${Math.max(2,pct)}%${pct>=100?';background:var(--good)':''}"></i></div>`:''}
         ${plano}
         <div class="acts">
           <button class="g" data-boxg="${b.id}">+ Guardar</button>
