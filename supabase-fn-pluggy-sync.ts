@@ -168,6 +168,10 @@ async function mcpSync(url: string, from: string) {
           nome: contaLabel(acc),
           fatura: Math.round(fatura * 100) / 100,
           vence: nextDue(acc.creditData && acc.creditData.balanceDueDate, hoje),
+          divida: Math.abs(Number(acc.balance) || 0),
+          limite: acc.creditData ? (Number(acc.creditData.creditLimit) || 0) : 0,
+          disponivel: acc.creditData ? (Number(acc.creditData.availableCreditLimit) || 0) : 0,
+          min: acc.creditData ? (Number(acc.creditData.minimumPayment) || 0) : 0,
         });
       }
     }
@@ -188,7 +192,30 @@ async function mcpSync(url: string, from: string) {
       });
     }
   }
-  return { ok: true, items: accounts.length, tx: out, cards };
+  // investimentos (carteira) — informativo, não entra em receitas/despesas
+  const invest: any[] = [];
+  const invData = await mcpToolRetry(url, sid, 'openfinance_list_investments', {});
+  if (invData) {
+    const grupos = Array.isArray(invData.items) ? invData.items : [invData];
+    for (const g of grupos) {
+      for (const r of (g && g.results) || []) {
+        if (r.integrity === 'suspect_zeroed') continue; // saldo indisponível, não é R$0 real
+        const saldo = Number(r.balance) || 0;
+        if (!saldo) continue;
+        invest.push({
+          nome: r.name || 'Investimento',
+          banco: g.bank || '',
+          tipo: r.subtype || r.type || '',
+          saldo: Math.round(saldo * 100) / 100,
+          rent12: (r.lastTwelveMonthsRate === undefined || r.lastTwelveMonthsRate === null) ? null : Number(r.lastTwelveMonthsRate),
+          vence: r.dueDate ? String(r.dueDate).slice(0, 10) : null,
+        });
+      }
+    }
+    invest.sort((a, b) => b.saldo - a.saldo);
+  }
+
+  return { ok: true, items: accounts.length, tx: out, cards, invest };
 }
 
 /* ============ Pluggy direto (legado) ============ */
@@ -303,7 +330,7 @@ Deno.serve(async (req) => {
       : await pluggySync(link, from);
     if (result.error) return json({ error: result.error }, 400);
     await supa.from('bank_link').update({ last_sync: new Date().toISOString() }).eq('user_id', uid);
-    return json({ ok: true, items: result.items, tx: result.tx, cards: result.cards });
+    return json({ ok: true, items: result.items, tx: result.tx, cards: result.cards, invest: result.invest || [] });
   } catch (_e) {
     return json({ error: 'internal' }, 500);
   }
