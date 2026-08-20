@@ -147,18 +147,19 @@ h2.sec{font-size:13px; color:var(--muted); font-weight:600; text-transform:upper
 }
 .chip.on{background:var(--ink); color:var(--page); border-color:var(--ink); font-weight:600}
 /* bank cards & investments */
-.bankcards{display:grid; gap:10px}
-@media(min-width:700px){ .bankcards{grid-template-columns:1fr 1fr} }
-.bankcard{background:var(--surface); border:1px solid var(--ring); border-radius:14px; padding:12px 14px}
-.bankcard .bc-top{display:flex; justify-content:space-between; align-items:baseline; gap:8px}
-.bankcard .bc-name{font-size:14px; font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.bankcard .bc-due{font-size:12px; color:var(--muted); white-space:nowrap}
+.bankcards{display:grid; gap:10px; grid-template-columns:minmax(0,1fr); min-width:0; max-width:100%}
+@media(min-width:700px){ .bankcards{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} }
+#homeCards, #homeInvest{min-width:0; max-width:100%; overflow:hidden}
+.bankcard{background:var(--surface); border:1px solid var(--ring); border-radius:14px; padding:12px 14px; min-width:0; max-width:100%; overflow:hidden; box-sizing:border-box}
+.bankcard .bc-top{display:flex; justify-content:space-between; align-items:baseline; gap:8px; min-width:0}
+.bankcard .bc-name{font-size:14px; font-weight:700; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.bankcard .bc-due{font-size:12px; color:var(--muted); white-space:nowrap; flex-shrink:0}
 .bankcard .bc-val{font-size:21px; font-weight:800; margin:4px 0 0}
 .bankcard .bc-lbl{font-size:11.5px; font-weight:500; color:var(--muted); display:block; margin-top:1px}
 .bankcard .bc-bar{height:6px; background:var(--ring); border-radius:4px; overflow:hidden; margin:9px 0 5px}
 .bankcard .bc-bar i{display:block; height:100%; background:var(--accent); border-radius:4px}
-.bankcard .bc-sub{font-size:12px; color:var(--muted)}
-.invrow{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 0; border-bottom:1px dashed var(--ring); font-size:13.5px}
+.bankcard .bc-sub{font-size:12px; color:var(--muted); overflow-wrap:anywhere}
+.invrow{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 0; border-bottom:1px dashed var(--ring); font-size:13.5px; min-width:0}
 .invrow:last-child{border-bottom:0; padding-bottom:2px}
 .invrow .n{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .invrow .b{font-size:11.5px; color:var(--muted); display:block}
