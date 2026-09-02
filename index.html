@@ -848,9 +848,13 @@ function forecast(){
     return {val: bal + pInc - pOut - savedNet, varProj:0, savedNet, planned:0, isCurrent:false};
   }
   const today = new Date().getDate();
-  // variable spend = paid expenses NOT from recurring
-  const varSpent = monthTx().filter(t=>t.type==='despesa'&&!t.pending&&!t.recId).reduce((s,t)=>s+t.amount,0);
-  const daily = today>0 ? varSpent/today : 0;
+  // gasto do dia a dia = despesas pagas fora de recorrentes.
+  // média dos ÚLTIMOS 30 DIAS (atravessa a virada do mês) — no início do mês,
+  // a média só do mês atual não diz nada.
+  const hoje = todayISO();
+  const d30 = new Date(Date.now()-30*864e5).toISOString().slice(0,10);
+  const varSpent30 = state.tx.filter(t=>t.type==='despesa'&&!t.pending&&!t.recId&&t.date>d30&&t.date<=hoje).reduce((s,t)=>s+t.amount,0);
+  const daily = varSpent30/30;
   const varProj = daily * (daysInMonth-today);
   const planned = state.boxes.reduce((s,b)=>s+planRemaining(b),0);
   return {val: bal + pInc - pOut - varProj - savedNet - planned, varProj, savedNet, planned, isCurrent:true};
@@ -896,15 +900,24 @@ function renderHome(){
   const hv=$('#heroVal'); hv.textContent = fmt(f.val);
   hv.style.color = f.val>=0 ? 'var(--good-text)' : 'var(--critical)';
   $('#heroLbl').textContent = f.isCurrent ? (f.val<0 ? 'Previsão para o fim do mês' : 'Previsão de sobra no fim do mês') : (state.view>todayISO().slice(0,7)?'Previsto para este mês':'Resultado do mês');
-  const parts=[];
-  if(pInc>0) parts.push(fmt0(pInc)+' a receber');
-  if(pOut>0) parts.push(fmt0(pOut)+' a pagar');
-  if(f.isCurrent && f.varProj>0) parts.push('~'+fmt0(f.varProj)+' que você ainda deve gastar no dia a dia');
-  if(f.savedNet>0) parts.push(fmt0(f.savedNet)+' guardados em caixinhas');
-  if(f.planned>0) parts.push(fmt0(f.planned)+' a guardar (plano mensal das caixinhas)');
-  let heroSub = parts.length? 'Já considerei: '+parts.join(' · ') : (f.isCurrent?'Baseado no que você já lançou este mês.':'');
-  if(f.val<0) heroSub += (heroSub?' — ':'') + (f.isCurrent ? 'Não é valor disponível: é quanto vai FALTAR se nada mudar.' : 'O mês fechou no vermelho.');
-  $('#heroSub').textContent = heroSub;
+  const linhas=['Saldo do mês até agora: '+fmt0(bal)];
+  if(pInc>0) linhas.push('+ '+fmt0(pInc)+' a receber (previstos)');
+  if(pOut>0) linhas.push('− '+fmt0(pOut)+' a pagar (previstos)');
+  if(f.isCurrent && f.varProj>0) linhas.push('− ~'+fmt0(f.varProj)+' de dia a dia até o fim do mês (média dos seus últimos 30 dias)');
+  if(f.savedNet>0) linhas.push('− '+fmt0(f.savedNet)+' já guardados em caixinhas');
+  if(f.planned>0) linhas.push('− '+fmt0(f.planned)+' que faltam do plano mensal das caixinhas');
+  let heroSub = linhas.length>1? linhas.join('<br>') : (f.isCurrent?'Baseado no que você já lançou este mês.':'');
+  if(f.val<0) heroSub += '<br><b>'+(f.isCurrent ? 'Não é valor disponível: é quanto vai FALTAR se nada mudar.' : 'O mês fechou no vermelho.')+'</b>';
+  // aviso quando as receitas esperadas do mês estão muito abaixo do mês anterior
+  if(f.isCurrent){
+    const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
+    const pm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    const lastInc = state.tx.filter(t=>mkey(t.date)===pm && t.type==='receita' && !t.pending).reduce((s,t)=>s+t.amount,0);
+    if(lastInc>0 && (inc+pInc) < lastInc*0.5){
+      heroSub += '<br>💡 Só vi '+fmt0(inc+pInc)+' de receitas neste mês (no anterior entraram '+fmt0(lastInc)+'). Cadastre salário e outras entradas como <b>recorrentes</b> — ou sincronize o banco — para a previsão ficar realista.';
+    }
+  }
+  $('#heroSub').innerHTML = heroSub;
 
   // cartões de crédito conectados (fatura em aberto vinda do banco)
   const hc=$('#homeCards');
@@ -1623,11 +1636,12 @@ async function bankSyncNow(showFeedback){
          se já existe importada com mesma data, valor e descrição, não entra de novo */
       if(x.ctype==='CREDIT' && state.tx.some(t=>t.pid && t.date===x.date && (t.desc||'')===(x.desc||'Lançamento do banco') && Math.abs(t.amount-valor)<0.005)) continue;
       /* concilia com o que o usuário já registrou:
-         - recorrente prevista (aluguel, salário…): valor ±2% (mín. R$1), até 7 dias
+         - recorrente prevista (aluguel, salário…): valor ±10% (mín. R$1), até 7 dias
+           (salário varia com hora extra/bônus; recorrentes são poucas, o risco de casar errado é baixo)
          - lançamento manual (digitado): valor ±2% (mín. R$1), até 3 dias
          O registro do usuário vira o lançamento real — não entra duplicado. */
       const alvo = state.tx.find(t=>!t.pid && t.type===tipo
-        && Math.abs(t.amount-valor)<=Math.max(1, t.amount*0.02)
+        && Math.abs(t.amount-valor)<=Math.max(1, t.amount*(t.recId?0.10:0.02))
         && Math.abs(new Date(t.date)-new Date(x.date))<=(t.recId?7:3)*864e5);
       if(alvo){
         alvo.pending=false; alvo.pid=x.id; alvo.amount=valor; alvo.date=x.date||alvo.date;
