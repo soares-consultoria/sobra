@@ -623,6 +623,7 @@ nav.bottom button svg{width:22px; height:22px}
       <button class="ghost" id="bankCancel">Fechar</button>
       <button class="primary" id="bankSave">Salvar e sincronizar</button>
       <button class="primary" id="bankSync" style="display:none">Sincronizar agora</button>
+      <button class="ghost" id="bankSwitch" style="display:none">Trocar de provedor</button>
       <button class="ghost" id="bankReimport" style="display:none">Reimportar do zero</button>
       <button class="danger" id="bankUnlink" style="display:none">Desconectar</button>
     </div>
@@ -1597,6 +1598,7 @@ function bankUI(){
   $('#bankSave').style.display = linked?'none':'';
   $('#bankSync').style.display = linked?'':'none';
   $('#bankReimport') && ($('#bankReimport').style.display = linked?'':'none');
+  $('#bankSwitch') && ($('#bankSwitch').style.display = linked?'':'none');
   $('#bankUnlink').style.display = linked?'':'none';
   if(linked){
     const ls = bankInfo.last_sync? new Date(bankInfo.last_sync).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : null;
@@ -1773,6 +1775,17 @@ $('#bankSave') && ($('#bankSave').onclick=async ()=>{
   finally{ $('#bankSave').disabled=false; }
 });
 $('#bankSync') && ($('#bankSync').onclick=()=>bankSyncNow());
+$('#bankSwitch') && ($('#bankSwitch').onclick=()=>{
+  /* mostra as abas de provedor sem desconectar: salvar novos códigos substitui a conexão atual */
+  $('#bankSetup').style.display='';
+  $('#bankSave').style.display='';
+  $('#bankLinked').style.display='none';
+  $('#bankSwitch').style.display='none';
+  $('#bankSync').style.display='none';
+  $('#bankReimport').style.display='none';
+  $('#bankUnlink').style.display='none';
+  toast('Escolha o provedor e salve — a conexão atual será substituída');
+});
 $('#bankReimport') && ($('#bankReimport').onclick=async ()=>{
   if(!confirm('Remove TODOS os lançamentos importados do banco (os que você criou à mão ficam) e importa tudo de novo, já com as regras novas. Continuar?')) return;
   state.tx = state.tx.filter(t=>!t.pid);
