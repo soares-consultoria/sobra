@@ -142,10 +142,12 @@ async function mcpSync(url: string, from: string) {
   const hoje = new Date().toISOString().slice(0, 10);
   const out: any[] = [];
   const cards: any[] = [];
+  const contas: any[] = [];
   for (const acc of accounts) {
     const accId = acc.account_id || acc.id;
     if (!accId) continue;
     const isCard = acc.type === 'CREDIT';
+    if (!isCard) contas.push({ nome: contaLabel(acc), banco: acc.bank || '', saldo: Number(acc.balance) || 0 });
     // cartão: janela maior para cobrir todo o ciclo aberto da fatura
     const d40 = new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10);
     const fromAcc = isCard && d40 < from ? d40 : from;
@@ -215,7 +217,7 @@ async function mcpSync(url: string, from: string) {
     invest.sort((a, b) => b.saldo - a.saldo);
   }
 
-  return { ok: true, items: accounts.length, tx: out, cards, invest };
+  return { ok: true, items: accounts.length, tx: out, cards, invest, contas };
 }
 
 /* ============ Pluggy direto (legado) ============ */
@@ -330,7 +332,7 @@ Deno.serve(async (req) => {
       : await pluggySync(link, from);
     if (result.error) return json({ error: result.error }, 400);
     await supa.from('bank_link').update({ last_sync: new Date().toISOString() }).eq('user_id', uid);
-    return json({ ok: true, items: result.items, tx: result.tx, cards: result.cards, invest: result.invest || [] });
+    return json({ ok: true, items: result.items, tx: result.tx, cards: result.cards, invest: result.invest || [], contas: result.contas || [] });
   } catch (_e) {
     return json({ error: 'internal' }, 500);
   }
