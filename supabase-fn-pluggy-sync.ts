@@ -240,34 +240,93 @@ async function pluggyAuth(clientId: string, clientSecret: string): Promise<strin
   return d.apiKey || null;
 }
 async function pget(path: string, apiKey: string): Promise<any | null> {
-  const r = await fetch('https://api.pluggy.ai/' + path, { headers: { 'X-API-KEY': apiKey } });
-  if (!r.ok) return null;
-  return r.json();
+  for (let i = 0; i < 3; i++) {
+    const r = await fetch('https://api.pluggy.ai/' + path, { headers: { 'X-API-KEY': apiKey } });
+    if (r.status === 429) { await sleep(1200); continue; } // rate limit: espera e repete
+    if (!r.ok) return null;
+    return r.json();
+  }
+  return null;
 }
 async function pluggySync(link: any, from: string) {
   const apiKey = await pluggyAuth(link.client_id, link.client_secret);
   if (!apiKey) return { error: 'invalid_credentials' };
+  const hoje = new Date().toISOString().slice(0, 10);
   const out: any[] = [];
   const cards: any[] = [];
+  const contas: any[] = [];
+  const invest: any[] = [];
   for (const itemId of (link.item_ids || []).map(normItem)) {
+    // nome do banco vem do conector do item; um item quebrado (LOGIN_ERROR/OUTDATED)
+    // não derruba a sincronização — os dados persistidos ainda são lidos
+    const it = await pget(`items/${encodeURIComponent(itemId)}`, apiKey);
+    const bank = (it && it.connector && (it.connector.name || '')) || '';
+    await sleep(400);
     const accs = await pget(`accounts?itemId=${encodeURIComponent(itemId)}`, apiKey);
-    for (const a of accs?.results || []) {
-      if (a.type === 'CREDIT') {
-        cards.push({ nome: a.name || 'Cartão', fatura: Math.abs(Number(a.balance) || 0), vence: a.creditData && a.creditData.balanceDueDate ? String(a.creditData.balanceDueDate).slice(0, 10) : null });
-      }
+    await sleep(400);
+    for (const a of (accs && accs.results) || []) {
+      const isCard = a.type === 'CREDIT';
+      const label = (bank ? bank + ' ' : '') + (isCard ? (a.name || 'Cartão') : (a.subtype === 'SAVINGS_ACCOUNT' ? 'Poupança' : 'Conta'));
+      if (!isCard) contas.push({ nome: label, banco: bank, saldo: Number(a.balance) || 0 });
+      // cartão: janela maior para cobrir todo o ciclo aberto da fatura
+      const d40 = new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10);
+      const fromAcc = isCard && d40 < from ? d40 : from;
+      let fatura = 0;
       let page = 1, totalPages = 1;
       while (page <= totalPages && page <= 10) {
-        const t = await pget(`transactions?accountId=${encodeURIComponent(a.id)}&from=${from}&pageSize=500&page=${page}`, apiKey);
+        const t = await pget(`transactions?accountId=${encodeURIComponent(a.id)}&from=${fromAcc}&pageSize=500&page=${page}`, apiKey);
+        await sleep(400);
         if (!t) break;
         totalPages = t.totalPages || 1;
         for (const x of t.results || []) {
-          out.push({ id: x.id, date: String(x.date || '').slice(0, 10), desc: x.description || '', amount: Math.abs(Number(x.amount) || 0), tipo: x.type === 'CREDIT' ? 'receita' : 'despesa', cat: x.category || null, conta: a.name || '', ctype: a.type || '' });
+          const date = String(x.date || '').slice(0, 10);
+          if (!x.id || !date) continue;
+          const amt = Math.abs(Number(x.amount) || 0);
+          const tipoTx = (x.type === 'CREDIT' || Number(x.amount) > 0) ? (x.type === 'DEBIT' ? 'despesa' : 'receita') : 'despesa';
+          if (isCard && String(x.status || '') === 'PENDING' && x.type === 'DEBIT' && date <= hoje
+              && String(x.category || '') !== 'Credit card payment') fatura += amt;
+          if (date < from) continue;
+          if (String(x.status || '') === 'PENDING' && date > hoje) continue; // parcelas/fatura futura
+          if (isInvest(x)) continue; // aplicação/resgate não entra no orçamento
+          if (!amt) continue;
+          out.push({
+            id: x.id, date, desc: x.description || '', amount: amt,
+            tipo: tipoTx, cat: x.category || null, conta: label,
+            ctype: isCard ? 'CREDIT' : 'BANK',
+          });
         }
         page++;
       }
+      if (isCard) {
+        cards.push({
+          nome: label,
+          fatura: Math.round(fatura * 100) / 100,
+          vence: nextDue(a.creditData && a.creditData.balanceDueDate, hoje),
+          divida: Math.abs(Number(a.balance) || 0),
+          limite: a.creditData ? (Number(a.creditData.creditLimit) || 0) : 0,
+          disponivel: a.creditData ? (Number(a.creditData.availableCreditLimit) || 0) : 0,
+          min: a.creditData ? (Number(a.creditData.minimumPayment) || 0) : 0,
+        });
+      }
+    }
+    // investimentos do item — informativo
+    const inv = await pget(`investments?itemId=${encodeURIComponent(itemId)}`, apiKey);
+    await sleep(400);
+    for (const r of (inv && inv.results) || []) {
+      const saldo = Number(r.balance) || 0;
+      if (!saldo) continue;
+      invest.push({
+        nome: r.name || 'Investimento',
+        banco: bank,
+        tipo: r.subtype || r.type || '',
+        saldo: Math.round(saldo * 100) / 100,
+        rent12: (r.lastTwelveMonthsRate === undefined || r.lastTwelveMonthsRate === null) ? null : Number(r.lastTwelveMonthsRate),
+        vence: r.dueDate ? String(r.dueDate).slice(0, 10) : null,
+      });
     }
   }
-  return { ok: true, items: (link.item_ids || []).length, tx: out, cards };
+  invest.sort((a, b) => b.saldo - a.saldo);
+  return { ok: true, items: (link.item_ids || []).length, tx: out, cards, invest, contas };
 }
 
 /* ============ servidor ============ */
