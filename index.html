@@ -146,10 +146,14 @@ h2.sec{font-size:13px; color:var(--muted); font-weight:600; text-transform:upper
   padding:7px 14px; font-size:13px; color:var(--ink2); white-space:nowrap;
 }
 .chip.on{background:var(--ink); color:var(--page); border-color:var(--ink); font-weight:600}
+/* sync banner */
+#syncBar{display:flex; align-items:center; gap:9px; background:var(--surface); border:1px solid var(--ring); border-radius:12px; padding:9px 12px; font-size:13px; color:var(--muted); margin:0 0 10px}
+#syncBar .sp{width:14px; height:14px; border:2px solid var(--ring); border-top-color:var(--accent); border-radius:50%; animation:syncspin .8s linear infinite; flex-shrink:0}
+@keyframes syncspin{to{transform:rotate(360deg)}}
 /* bank cards & investments */
 .bankcards{display:grid; gap:10px; grid-template-columns:minmax(0,1fr); min-width:0; max-width:100%}
 @media(min-width:700px){ .bankcards{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} }
-#homeCards, #homeInvest{min-width:0; max-width:100%; overflow:hidden}
+#homeCards, #homeInvest, #homeContas{min-width:0; max-width:100%; overflow:hidden}
 .bankcard{background:var(--surface); border:1px solid var(--ring); border-radius:14px; padding:12px 14px; min-width:0; max-width:100%; overflow:hidden; box-sizing:border-box}
 .bankcard .bc-top, .box .bc-top{display:flex; justify-content:space-between; align-items:baseline; gap:8px; min-width:0}
 .bankcard .bc-name, .box .bc-name{font-size:14px; font-weight:700; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
@@ -295,7 +299,7 @@ nav.bottom button svg{width:22px; height:22px}
   #v-home #heroCard{ grid-column:2; grid-row:span 2; align-self:stretch }
   #v-home #pendWrap{ grid-column:1 }
   #v-home #homeBoxes{ grid-column:1/-1 }
-  #v-home #homeCards, #v-home #homeInvest{ grid-column:1/-1 }
+  #v-home #homeCards, #v-home #homeInvest, #v-home #homeContas, #v-home #syncBar{ grid-column:1/-1 }
   #heroCard .val{ font-size:40px }
   /* listas em duas colunas */
   #recIncomes, #recExpenses{ display:grid; grid-template-columns:1fr 1fr; gap:8px }
@@ -344,6 +348,7 @@ nav.bottom button svg{width:22px; height:22px}
     <div class="hint" id="quickHint">Digite e pronto: <b>uber 23,50</b> · <b>luz 180 ontem</b> · <b>recebi freela 900</b>. Eu entendo o valor, a categoria e a data.</div>
 
     <div class="kpis">
+    <div id="syncBar" style="display:none"><span class="sp"></span>Sincronizando com seu banco…</div>
       <div class="kpi"><div class="l">Receitas</div><div class="v pos" id="kIn">R$ 0</div></div>
       <div class="kpi"><div class="l">Despesas</div><div class="v neg" id="kOut">R$ 0</div></div>
       <div class="kpi"><div class="l">Saldo do mês</div><div class="v" id="kBal">R$ 0</div></div>
@@ -356,6 +361,7 @@ nav.bottom button svg{width:22px; height:22px}
     </div>
 
     <div id="pendWrap"></div>
+    <div id="homeContas"></div>
     <div id="homeCards"></div>
     <div id="homeInvest"></div>
     <div id="homeBoxes"></div>
@@ -789,10 +795,10 @@ const CONFIGURED = SUPA_URL.indexOf('https')===0;
 const CLOUD = CONFIGURED && !!window.supabase;
 let sb=null, user=null, syncTimer=null, dirty=false;
 let dataOwner=null, shareInfo=null; /* acesso familiar: dataOwner = dono do orçamento em uso */
-let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], cards:[], invest:[], bankIgnore:[], theme:null, view: todayISO().slice(0,7) };
+let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], cards:[], invest:[], contas:[], bankIgnore:[], theme:null, view: todayISO().slice(0,7) };
 function lsKey(){ const id=dataOwner||(user&&user.id); return id ? LS+'.'+id : LS; }
-function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov, cards:state.cards, invest:state.invest, bankIgnore:state.bankIgnore}; }
-function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; state.cards=s.cards||[]; state.invest=s.invest||[]; state.bankIgnore=s.bankIgnore||[]; }
+function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov, cards:state.cards, invest:state.invest, contas:state.contas, bankIgnore:state.bankIgnore}; }
+function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; state.cards=s.cards||[]; state.invest=s.invest||[]; state.contas=s.contas||[]; state.bankIgnore=s.bankIgnore||[]; }
 function load(){ try{ const s=JSON.parse(localStorage.getItem(lsKey())); if(s) adopt(s); }catch(e){} }
 function save(){
   localStorage.setItem(lsKey(), JSON.stringify(snapshot()));
@@ -919,6 +925,21 @@ function renderHome(){
   }
   $('#heroSub').innerHTML = heroSub;
 
+  // saldo das contas conectadas
+  const hcc=$('#homeContas');
+  if(hcc){
+    if(state.contas && state.contas.length){
+      const totC = state.contas.reduce((s,c)=>s+(+c.saldo||0),0);
+      hcc.innerHTML = '<h2 class="sec">Contas</h2><div class="bankcard">'+
+        `<div class="bc-top"><span class="bc-name">💼 Saldo em contas</span></div>
+         <div class="bc-val"${totC<0?' style="color:var(--critical)"':''}>${fmt0(totC)}<span class="bc-lbl">soma das contas conectadas · atualizado na última sincronização</span></div>`+
+        state.contas.map(c=>`<div class="invrow">
+          <div class="n">🏦 ${esc(c.nome)}</div>
+          <div class="v"${(+c.saldo<0)?' style="color:var(--critical)"':''}>${fmt0(+c.saldo||0)}</div>
+        </div>`).join('')+'</div>';
+    } else hcc.innerHTML='';
+  }
+
   // cartões de crédito conectados (fatura em aberto vinda do banco)
   const hc=$('#homeCards');
   if(hc){
@@ -1032,7 +1053,7 @@ function renderExtrato(){
     return `<div class="txgroup"><div class="gh"><span>${fmtDay(d)}</span><span>${sum!==0?fmt0(sum):''}</span></div>`+
       items.map(t=>`<div class="tx ${t.pending?'pending':''}" data-tx="${t.id}">
         <div class="cdot" style="background:${catColor(t.category)}22">${CAT_ICON[t.category]||'📦'}</div>
-        <div class="info"><div class="d">${esc(t.desc)}</div><div class="c">${t.category}${t.recId?' <span class="badge">recorrente</span>':''}${t.pending?' <span class="badge">previsto</span>':''}${t.pid?(t.ctype==='CREDIT'?' <span class="badge">💳 cartão</span>':' <span class="badge">🏦 conta</span>'):''}</div></div>
+        <div class="info"><div class="d">${esc(t.desc)}</div><div class="c">${t.category}${t.recId?' <span class="badge">recorrente</span>':''}${t.pending?' <span class="badge">previsto</span>':''}${t.pid?' <span class="badge">'+(t.ctype==='CREDIT'?'💳 ':'🏦 ')+esc(((t.src||'').split(' ')[0])||(t.ctype==='CREDIT'?'cartão':'conta'))+'</span>':''}</div></div>
         <div class="a ${t.type==='receita'?'pos':''}">${t.type==='receita'?'+':'−'}${fmt(t.amount)}</div>
       </div>`).join('')+'</div>';
   }).join('');
@@ -1576,9 +1597,14 @@ function mapBankCat(cat, desc, tipo){
   if(best && CATS[tipo].includes(best)) return best;
   return 'Outros';
 }
+let syncBusy=false;
+function syncUI(on){ const b=$('#syncBar'); if(b) b.style.display=on?'flex':'none'; }
 async function bankSyncNow(showFeedback){
+  if(syncBusy) return;
+  syncBusy=true;
   try{
     $('#bankSync').disabled=true; $('#bankSave').disabled=true;
+    syncUI(true);
     const from = todayISO().slice(0,7)+'-01';
     const res = await bankCall({action:'sync', from});
     if(res.error){
@@ -1653,10 +1679,11 @@ async function bankSyncNow(showFeedback){
     }
     if(Array.isArray(res.cards)) state.cards = res.cards;
     if(Array.isArray(res.invest)) state.invest = res.invest;
+    if(Array.isArray(res.contas)) state.contas = res.contas;
     if(added || conc || Array.isArray(res.cards) || Array.isArray(res.invest)){ save(); render(); }
     bankInfo = { linked:true, items:res.items, last_sync:new Date().toISOString() };
     bankUI();
-    if(showFeedback!==false){
+    if(showFeedback!==false || added || conc){
       const extra = (transf? ' ('+Math.round(transf/2)+' transferência'+(transf>2?'s':'')+' entre suas contas ignorada'+(transf>2?'s':'')+')' : '')
         + (conc? ' · '+conc+' conciliado'+(conc>1?'s':'')+' com o que você já tinha ✓' : '');
       toast(added||conc? (added+conc)+' lançamento'+((added+conc)>1?'s':'')+' do banco ✓'+extra : 'Tudo em dia — nada novo no banco ✓'+extra);
@@ -1665,6 +1692,8 @@ async function bankSyncNow(showFeedback){
     if(showFeedback!==false) alert('Não foi possível falar com o serviço agora. Tente de novo em instantes.');
   }finally{
     $('#bankSync').disabled=false; $('#bankSave').disabled=false;
+    syncUI(false);
+    syncBusy=false;
   }
 }
 async function bankInit(){
@@ -1672,11 +1701,13 @@ async function bankInit(){
     const st = await bankCall({action:'status'});
     if(st && st.linked){
       bankInfo = st; bankUI();
-      const stale = !st.last_sync || (Date.now()-new Date(st.last_sync).getTime() > 12*3600*1000);
+      const stale = !st.last_sync || (Date.now()-new Date(st.last_sync).getTime() > 10*60*1000);
       if(stale) bankSyncNow(false);
     }
   }catch(e){}
 }
+/* quando o app volta ao primeiro plano (PWA), sincroniza de novo se passou da janela */
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && sb) bankInit(); });
 $('#bankBtn') && ($('#bankBtn').onclick=async ()=>{ bankUI(); $('#bankOverlay').classList.add('show'); try{ const st=await bankCall({action:'status'}); bankInfo=st&&st.linked?st:null; bankUI(); }catch(e){} });
 $('#bankCancel') && ($('#bankCancel').onclick=()=>$('#bankOverlay').classList.remove('show'));
 $('#bankSave') && ($('#bankSave').onclick=async ()=>{
@@ -1703,6 +1734,7 @@ $('#bankReimport') && ($('#bankReimport').onclick=async ()=>{
   state.tx = state.tx.filter(t=>!t.pid);
   state.cards = [];
   state.invest = [];
+  state.contas = [];
   save(); render();
   await bankSyncNow();
 });
@@ -1710,7 +1742,7 @@ $('#bankUnlink') && ($('#bankUnlink').onclick=async ()=>{
   if(!confirm('Desconectar apaga os códigos de acesso guardados e para as sincronizações. Os lançamentos já importados continuam no seu orçamento. Continuar?')) return;
   try{
     const res = await bankCall({action:'delete'});
-    if(res && res.ok){ bankInfo=null; state.cards=[]; state.invest=[]; save(); render(); bankUI(); toast('Banco desconectado ✓'); }
+    if(res && res.ok){ bankInfo=null; state.cards=[]; state.invest=[]; state.contas=[]; save(); render(); bankUI(); toast('Banco desconectado ✓'); }
   }catch(e){ alert('Não foi possível falar com o serviço agora. Tente de novo em instantes.'); }
 });
 /* ============ ajuda ============ */
