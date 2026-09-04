@@ -266,12 +266,18 @@ async function pluggySync(link: any, from: string) {
     await sleep(400);
     for (const a of (accs && accs.results) || []) {
       const isCard = a.type === 'CREDIT';
-      const label = (bank ? bank + ' ' : '') + (isCard ? (a.name || 'Cartão') : (a.subtype === 'SAVINGS_ACCOUNT' ? 'Poupança' : 'Conta'));
-      if (!isCard) contas.push({ nome: label, banco: bank, saldo: Number(a.balance) || 0 });
+      // via Meu Pluggy o conector vem como "MeuPluggy" — o nome real do banco está na própria conta
+      const generico = !bank || /meu\s*pluggy/i.test(bank);
+      const label = isCard
+        ? ((generico ? '' : bank + ' ') + (a.name || 'Cartão')).trim()
+        : (generico
+            ? ((a.name || 'Conta') + (a.subtype === 'SAVINGS_ACCOUNT' ? ' — Poupança' : ''))
+            : bank + ' ' + (a.subtype === 'SAVINGS_ACCOUNT' ? 'Poupança' : 'Conta'));
+      if (!isCard) contas.push({ nome: label, banco: generico ? (a.name || '') : bank, saldo: Number(a.balance) || 0 });
       // cartão: janela maior para cobrir todo o ciclo aberto da fatura
       const d40 = new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10);
       const fromAcc = isCard && d40 < from ? d40 : from;
-      let fatura = 0;
+      const cardRaw: any[] = [];
       let page = 1, totalPages = 1;
       while (page <= totalPages && page <= 10) {
         const t = await pget(`transactions?accountId=${encodeURIComponent(a.id)}&from=${fromAcc}&pageSize=500&page=${page}`, apiKey);
@@ -283,8 +289,7 @@ async function pluggySync(link: any, from: string) {
           if (!x.id || !date) continue;
           const amt = Math.abs(Number(x.amount) || 0);
           const tipoTx = (x.type === 'CREDIT' || Number(x.amount) > 0) ? (x.type === 'DEBIT' ? 'despesa' : 'receita') : 'despesa';
-          if (isCard && String(x.status || '') === 'PENDING' && x.type === 'DEBIT' && date <= hoje
-              && String(x.category || '') !== 'Credit card payment') fatura += amt;
+          if (isCard) cardRaw.push({ date, amt, type: x.type, status: String(x.status || ''), cat: String(x.category || '') });
           if (date < from) continue;
           if (String(x.status || '') === 'PENDING' && date > hoje) continue; // parcelas/fatura futura
           if (isInvest(x)) continue; // aplicação/resgate não entra no orçamento
@@ -298,10 +303,35 @@ async function pluggySync(link: any, from: string) {
         page++;
       }
       if (isCard) {
+        // 1) fatura parcial via compras PENDING do ciclo (quando o conector as expõe)
+        let fatura = 0;
+        for (const c of cardRaw) {
+          if (c.status === 'PENDING' && c.type === 'DEBIT' && c.amt > 0 && c.date <= hoje && c.cat !== 'Credit card payment') fatura += c.amt;
+        }
+        let vence = nextDue(a.creditData && a.creditData.balanceDueDate, hoje);
+        if (fatura === 0) {
+          // 2) endpoint oficial de faturas: a de vencimento futuro mais próximo é a atual
+          const bills = await pget(`bills?accountId=${encodeURIComponent(a.id)}`, apiKey);
+          await sleep(400);
+          let cur: any = null;
+          for (const b of (bills && bills.results) || []) {
+            const d = String(b.dueDate || '').slice(0, 10);
+            const v = Math.abs(Number(b.totalAmount) || 0);
+            if (d && d >= hoje && v > 0 && (!cur || d < cur.d)) cur = { d, v };
+          }
+          if (cur) { fatura = cur.v; vence = cur.d; }
+          else if (vence) {
+            // 3) estimativa: compras do ciclo (5 semanas antes do vencimento até hoje)
+            const ini = new Date(new Date(vence + 'T12:00:00Z').getTime() - 37 * 864e5).toISOString().slice(0, 10);
+            for (const c of cardRaw) {
+              if (c.type === 'DEBIT' && c.amt > 0 && c.date >= ini && c.date <= hoje && c.cat !== 'Credit card payment') fatura += c.amt;
+            }
+          }
+        }
         cards.push({
           nome: label,
           fatura: Math.round(fatura * 100) / 100,
-          vence: nextDue(a.creditData && a.creditData.balanceDueDate, hoje),
+          vence,
           divida: Math.abs(Number(a.balance) || 0),
           limite: a.creditData ? (Number(a.creditData.creditLimit) || 0) : 0,
           disponivel: a.creditData ? (Number(a.creditData.availableCreditLimit) || 0) : 0,
@@ -317,7 +347,7 @@ async function pluggySync(link: any, from: string) {
       if (!saldo) continue;
       invest.push({
         nome: r.name || 'Investimento',
-        banco: bank,
+        banco: /meu\s*pluggy/i.test(bank) ? '' : bank,
         tipo: r.subtype || r.type || '',
         saldo: Math.round(saldo * 100) / 100,
         rent12: (r.lastTwelveMonthsRate === undefined || r.lastTwelveMonthsRate === null) ? null : Number(r.lastTwelveMonthsRate),
