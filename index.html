@@ -814,10 +814,10 @@ const CONFIGURED = SUPA_URL.indexOf('https')===0;
 const CLOUD = CONFIGURED && !!window.supabase;
 let sb=null, user=null, syncTimer=null, dirty=false;
 let dataOwner=null, shareInfo=null; /* acesso familiar: dataOwner = dono do orçamento em uso */
-let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], cards:[], invest:[], contas:[], bankIgnore:[], theme:null, view: todayISO().slice(0,7) };
+let state = { tx:[], rec:[], budgets:{}, boxes:[], boxmov:[], cards:[], invest:[], contas:[], cardHide:[], bankIgnore:[], theme:null, view: todayISO().slice(0,7) };
 function lsKey(){ const id=dataOwner||(user&&user.id); return id ? LS+'.'+id : LS; }
-function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov, cards:state.cards, invest:state.invest, contas:state.contas, bankIgnore:state.bankIgnore}; }
-function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; state.cards=s.cards||[]; state.invest=s.invest||[]; state.contas=s.contas||[]; state.bankIgnore=s.bankIgnore||[]; }
+function snapshot(){ return {tx:state.tx, rec:state.rec, budgets:state.budgets, boxes:state.boxes, boxmov:state.boxmov, cards:state.cards, invest:state.invest, contas:state.contas, cardHide:state.cardHide, bankIgnore:state.bankIgnore}; }
+function adopt(s){ state.tx=s.tx||[]; state.rec=s.rec||[]; state.budgets=s.budgets||{}; state.boxes=s.boxes||[]; state.boxmov=s.boxmov||[]; state.cards=s.cards||[]; state.invest=s.invest||[]; state.contas=s.contas||[]; state.cardHide=s.cardHide||[]; state.bankIgnore=s.bankIgnore||[]; }
 function load(){ try{ const s=JSON.parse(localStorage.getItem(lsKey())); if(s) adopt(s); }catch(e){} }
 function save(){
   localStorage.setItem(lsKey(), JSON.stringify(snapshot()));
@@ -962,20 +962,23 @@ function renderHome(){
   // cartões de crédito conectados (fatura em aberto vinda do banco)
   const hc=$('#homeCards');
   if(hc){
-    if(state.cards && state.cards.length){
+    const ocultos = state.cardHide||[];
+    const visiveis = (state.cards||[]).filter(c=>!ocultos.includes(c.nome));
+    if(visiveis.length || (state.cards||[]).length){
       hc.innerHTML = '<h2 class="sec">Cartões de crédito</h2><div class="bankcards">'+
-        state.cards.map(c=>{
-          const vence = c.vence? 'vence dia '+(+c.vence.slice(8,10))+'/'+c.vence.slice(5,7) : '';
+        visiveis.map(c=>{
+          const vence = c.vence? (c.fechada?'venceu ':'vence ')+'dia '+(+c.vence.slice(8,10))+'/'+c.vence.slice(5,7) : '';
           const temLim = +c.limite>0;
           const usoPct = temLim? Math.min(100, Math.round((+c.divida||0)/+c.limite*100)) : 0;
           const barra = temLim? `<div class="bc-bar"><i style="width:${usoPct}%"></i></div>
             <div class="bc-sub">limite usado: <b>${fmt0(c.divida||0)}</b> de ${fmt0(c.limite)} (${usoPct}%) · disponível ${fmt0(c.disponivel||0)}</div>` : '';
           return `<div class="bankcard">
-            <div class="bc-top"><span class="bc-name">💳 ${esc(c.nome)}</span><span class="bc-due">${vence}</span></div>
-            <div class="bc-val">${fmt0(c.fatura)}<span class="bc-lbl">fatura em aberto (parcial) — compras do ciclo até hoje</span></div>
+            <div class="bc-top"><span class="bc-name">💳 ${esc(c.nome)}</span><span class="bc-due">${vence} · <a href="#" data-cardhide="${esc(c.nome)}" style="color:var(--muted); text-decoration:underline">ocultar</a></span></div>
+            <div class="bc-val">${fmt0(c.fatura)}<span class="bc-lbl">${c.fechada?'última fatura fechada — o banco ainda não publicou a atual':'fatura em aberto (parcial) — compras do ciclo até hoje'}</span></div>
             ${barra}
           </div>`;
-        }).join('')+'</div>';
+        }).join('')+'</div>'+
+        (ocultos.length? `<div class="bc-sub" style="margin-top:8px">${ocultos.length} cartão${ocultos.length>1?'es':''} oculto${ocultos.length>1?'s':''} · <a href="#" id="cardsUnhide" style="color:var(--accent)">mostrar de novo</a></div>` : '');
     } else hc.innerHTML='';
   }
 
@@ -1308,6 +1311,16 @@ document.addEventListener('click', e=>{
   if(bg){ openMov(bg.dataset.boxg, null, 1); return; }
   const br=e.target.closest('[data-boxr]');
   if(br){ openMov(br.dataset.boxr, null, -1); return; }
+  const chd=e.target.closest('[data-cardhide]');
+  if(chd){ e.preventDefault();
+    const nome=chd.dataset.cardhide;
+    if(confirm('Ocultar o cartão "'+nome+'" da tela inicial? Você pode mostrar de novo quando quiser.')){
+      state.cardHide=state.cardHide||[]; if(!state.cardHide.includes(nome)) state.cardHide.push(nome);
+      save(); render();
+    }
+    return; }
+  const cuh=e.target.closest('#cardsUnhide');
+  if(cuh){ e.preventDefault(); state.cardHide=[]; save(); render(); return; }
   const bp=e.target.closest('[data-boxplan]');
   if(bp){ const b=state.boxes.find(x=>x.id===bp.dataset.boxplan); if(b) openMov(b.id, planRemaining(b), 1); return; }
   const bpo=e.target.closest('[data-boxplanok]');
@@ -1663,11 +1676,14 @@ async function bankSyncNow(showFeedback){
       }
     }
     /* 4) pernas de pagamento de fatura que ficaram sem par (outra conta fora do ar ou não conectada):
-       é transferência, não receita/despesa. Estornos e reembolsos continuam entrando. */
+       é transferência, não receita/despesa. Estornos e reembolsos continuam entrando.
+       EXCEÇÃO: se os cartões conectados NÃO trazem compras individuais (via Meu Pluggy),
+       o débito da fatura na conta é a única despesa do cartão — então ele CONTA. */
+    const cartoesComCompras = Array.isArray(res.cards) && res.cards.some(c=>c && c.temCompras);
     for(const x of txs){
       if(skip.has(x.id)) continue;
       if(x.ctype==='CREDIT' && x.tipo==='receita' && (/pagamento|pgto|pagto|payment/i.test(x.desc||'') || /credit card payment/i.test(x.cat||''))) skip.add(x.id);
-      if(x.ctype!=='CREDIT' && x.tipo==='despesa' && (/gastos cartao|pagamento de fatura|pgto de fatura|pagto.*fatura/i.test(x.desc||'') || /credit card (fees|payment)/i.test(x.cat||''))) skip.add(x.id);
+      if(cartoesComCompras && x.ctype!=='CREDIT' && x.tipo==='despesa' && (/gastos cartao|pagamento de fatura|pgto de fatura|pagto.*fatura/i.test(x.desc||'') || /credit card (fees|payment)/i.test(x.cat||''))) skip.add(x.id);
     }
     let added=0, transf=0, conc=0;
     for(const x of txs){

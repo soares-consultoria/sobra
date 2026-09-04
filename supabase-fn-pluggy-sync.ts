@@ -170,6 +170,8 @@ async function mcpSync(url: string, from: string) {
           nome: contaLabel(acc),
           fatura: Math.round(fatura * 100) / 100,
           vence: nextDue(acc.creditData && acc.creditData.balanceDueDate, hoje),
+          fechada: false,
+          temCompras: true,
           divida: Math.abs(Number(acc.balance) || 0),
           limite: acc.creditData ? (Number(acc.creditData.creditLimit) || 0) : 0,
           disponivel: acc.creditData ? (Number(acc.creditData.availableCreditLimit) || 0) : 0,
@@ -310,6 +312,7 @@ async function pluggySync(link: any, from: string) {
           if (c.status === 'PENDING' && c.type === 'DEBIT' && c.amt > 0 && c.date <= hoje && c.cat !== 'Credit card payment') { fatura += c.amt; nPend++; }
         }
         let vence = nextDue(a.creditData && a.creditData.balanceDueDate, hoje);
+        let fechada = false;
         if (fatura === 0) {
           // 2) endpoint oficial de faturas: a de vencimento futuro mais próximo é a atual
           const bills = await pget(`bills?accountId=${encodeURIComponent(a.id)}`, apiKey);
@@ -323,6 +326,16 @@ async function pluggySync(link: any, from: string) {
           }
           console.log('[fatura]', label, JSON.stringify({ nTx: cardRaw.length, nPend, vence, nBills: brs.length, billsAmostra: brs.slice(0, 3).map((b: any) => ({ due: b.dueDate, total: b.totalAmount })), cur }));
           if (cur) { fatura = cur.v; vence = cur.d; }
+          else if (cardRaw.length === 0 && brs.length) {
+            // sem compras individuais nesta via: mostra a última fatura FECHADA (ignora valores-lixo < R$1)
+            let ult: any = null;
+            for (const b of brs) {
+              const d = String(b.dueDate || b.due_date || '').slice(0, 10);
+              const v = Math.abs(Number(b.totalAmount !== undefined ? b.totalAmount : (b.amount !== undefined ? b.amount : b.total)) || 0);
+              if (d && d < hoje && v >= 1 && (!ult || d > ult.d)) ult = { d, v };
+            }
+            if (ult) { fatura = ult.v; vence = ult.d; fechada = true; }
+          }
           else if (vence) {
             // 3) estimativa: compras do ciclo (5 semanas antes do vencimento até hoje)
             const ini = new Date(new Date(vence + 'T12:00:00Z').getTime() - 37 * 864e5).toISOString().slice(0, 10);
@@ -337,6 +350,8 @@ async function pluggySync(link: any, from: string) {
           nome: label,
           fatura: Math.round(fatura * 100) / 100,
           vence,
+          fechada,
+          temCompras: cardRaw.length > 0,
           divida: Math.abs(Number(a.balance) || 0),
           limite: a.creditData ? (Number(a.creditData.creditLimit) || 0) : 0,
           disponivel: a.creditData ? (Number(a.creditData.availableCreditLimit) || 0) : 0,
