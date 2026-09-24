@@ -142,6 +142,7 @@ async function pluggySync(link: any, from: string) {
       const d40 = new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10);
       const fromAcc = isCard && d40 < from ? d40 : from;
       const cardRaw: any[] = [];
+      let nAcc = 0, dMin = '', dMax = '';
       let page = 1, totalPages = 1;
       while (page <= totalPages && page <= 10) {
         const t = await pget(`transactions?accountId=${encodeURIComponent(a.id)}&from=${fromAcc}&pageSize=500&page=${page}`, apiKey);
@@ -163,9 +164,13 @@ async function pluggySync(link: any, from: string) {
             tipo: tipoTx, cat: x.category || null, conta: label,
             ctype: isCard ? 'CREDIT' : 'BANK',
           });
+          nAcc++;
+          if (!dMin || date < dMin) dMin = date;
+          if (!dMax || date > dMax) dMax = date;
         }
         page++;
       }
+      console.log('[acct]', label, JSON.stringify({ tipo: a.type, sub: a.subtype, n: nAcc, de: dMin, ate: dMax, from: fromAcc }));
       if (isCard) {
         // 1) fatura parcial via compras PENDING do ciclo (quando o conector as expõe)
         let fatura = 0;
@@ -238,6 +243,7 @@ async function pluggySync(link: any, from: string) {
     }
   }
   invest.sort((a, b) => b.saldo - a.saldo);
+  console.log('[sync]', JSON.stringify({ tx: out.length, cards: cards.length, contas: contas.length, invest: invest.length, from }));
   return { ok: true, items: (link.item_ids || []).length, tx: out, cards, invest, contas, avisos: [...avisos] };
 }
 
