@@ -112,6 +112,7 @@ async function pluggySync(link: any, from: string) {
   const cards: any[] = [];
   const contas: any[] = [];
   const invest: any[] = [];
+  const invmov: any[] = []; // resgates/aplicações que passaram pela conta (para o app neutralizar a perna espelho)
   const avisos = new Set<string>();
   for (const itemId of (link.item_ids || []).map(normItem)) {
     // dispara atualização e lê o estado do item; um item quebrado (LOGIN_ERROR/OUTDATED)
@@ -164,12 +165,18 @@ async function pluggySync(link: any, from: string) {
           if (isCard) cardRaw.push({ date, amt, type: x.type, status: String(x.status || ''), cat: String(x.category || '') });
           if (date < from) continue;
           if (String(x.status || '') === 'PENDING' && date > hoje) continue; // parcelas/fatura futura
-          if (isInvest(x)) continue; // aplicação/resgate não entra no orçamento
+          if (isInvest(x)) {
+            // aplicação/resgate não entra no orçamento, mas o app precisa saber que
+            // esse dinheiro passou pela conta para neutralizar a perna espelho
+            if (!isCard && amt) invmov.push({ date, valor: amt, tipo: tipoTx === 'receita' ? 'entrada' : 'saida', conta: label });
+            continue;
+          }
           if (!amt) continue;
           out.push({
             id: x.id, date, desc: x.description || '', amount: amt,
             tipo: tipoTx, cat: x.category || null, conta: label,
             ctype: isCard ? 'CREDIT' : 'BANK',
+            st: String(x.status || ''),
           });
           nAcc++;
           if (!dMin || date < dMin) dMin = date;
@@ -254,8 +261,24 @@ async function pluggySync(link: any, from: string) {
     }
   }
   invest.sort((a, b) => b.saldo - a.saldo);
-  console.log('[sync]', JSON.stringify({ tx: out.length, cards: cards.length, contas: contas.length, invest: invest.length, from }));
-  return { ok: true, items: (link.item_ids || []).length, tx: out, cards, invest, contas, avisos: [...avisos] };
+  // o banco pode devolver o MESMO lançamento duas vezes (pendente e efetivado) com
+  // ids diferentes — fica só o efetivado
+  const bySig = new Map<string, any[]>();
+  for (const t of out) {
+    const k = t.conta + '|' + t.tipo + '|' + t.date + '|' + t.desc + '|' + t.amount;
+    if (!bySig.has(k)) bySig.set(k, []);
+    bySig.get(k)!.push(t);
+  }
+  const drop = new Set<string>();
+  for (const arr of bySig.values()) {
+    if (arr.length > 1 && arr.some((t) => t.st === 'PENDING') && arr.some((t) => t.st !== 'PENDING')) {
+      for (const t of arr) if (t.st === 'PENDING') drop.add(t.id);
+    }
+  }
+  const outF = out.filter((t) => !drop.has(t.id));
+  for (const t of outF) delete t.st;
+  console.log('[sync]', JSON.stringify({ tx: outF.length, dupPend: drop.size, invmov: invmov.length, cards: cards.length, contas: contas.length, invest: invest.length, from }));
+  return { ok: true, items: (link.item_ids || []).length, tx: outF, cards, invest, contas, invmov, avisos: [...avisos] };
 }
 
 /* ============ servidor ============ */
