@@ -66,7 +66,11 @@ async function pget(path: string, apiKey: string): Promise<any | null> {
   for (let i = 0; i < 3; i++) {
     const r = await fetch('https://api.pluggy.ai/' + path, { headers: { 'X-API-KEY': apiKey } });
     if (r.status === 429) { await sleep(1200); continue; } // rate limit: espera e repete
-    if (!r.ok) return null;
+    if (!r.ok) {
+      // diagnóstico: qual endpoint falhou e com que código (sem expor ids)
+      console.log('[pget-err]', path.split('?')[0], r.status, (await r.text().catch(() => '')).slice(0, 180));
+      return null;
+    }
     return r.json();
   }
   return null;
@@ -142,12 +146,16 @@ async function pluggySync(link: any, from: string) {
       const d40 = new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10);
       const fromAcc = isCard && d40 < from ? d40 : from;
       const cardRaw: any[] = [];
-      let page = 1, totalPages = 1;
-      while (page <= totalPages && page <= 10) {
-        const t = await pget(`transactions?accountId=${encodeURIComponent(a.id)}&from=${fromAcc}&pageSize=500&page=${page}`, apiKey);
+      let nAcc = 0, dMin = '', dMax = '';
+      // GET /v2/transactions com paginação por cursor (o /transactions antigo foi
+      // desativado pela Pluggy e passou a responder 410)
+      let cursorQ: string | null = null;
+      let page = 1;
+      while (page <= 10) {
+        const q = cursorQ !== null ? cursorQ : `accountId=${encodeURIComponent(a.id)}&dateFrom=${fromAcc}`;
+        const t = await pget('v2/transactions?' + q, apiKey);
         await sleep(400);
         if (!t) break;
-        totalPages = t.totalPages || 1;
         for (const x of t.results || []) {
           const date = String(x.date || '').slice(0, 10);
           if (!x.id || !date) continue;
@@ -163,9 +171,17 @@ async function pluggySync(link: any, from: string) {
             tipo: tipoTx, cat: x.category || null, conta: label,
             ctype: isCard ? 'CREDIT' : 'BANK',
           });
+          nAcc++;
+          if (!dMin || date < dMin) dMin = date;
+          if (!dMax || date > dMax) dMax = date;
         }
         page++;
+        // o campo "next" traz a query pronta da próxima página; null = acabou
+        const nx = t.next;
+        if (!nx) break;
+        cursorQ = String(nx).replace(/^.*\?/, '');
       }
+      console.log('[acct]', label, JSON.stringify({ tipo: a.type, sub: a.subtype, n: nAcc, de: dMin, ate: dMax, from: fromAcc }));
       if (isCard) {
         // 1) fatura parcial via compras PENDING do ciclo (quando o conector as expõe)
         let fatura = 0;
@@ -238,6 +254,7 @@ async function pluggySync(link: any, from: string) {
     }
   }
   invest.sort((a, b) => b.saldo - a.saldo);
+  console.log('[sync]', JSON.stringify({ tx: out.length, cards: cards.length, contas: contas.length, invest: invest.length, from }));
   return { ok: true, items: (link.item_ids || []).length, tx: out, cards, invest, contas, avisos: [...avisos] };
 }
 
