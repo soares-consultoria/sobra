@@ -327,7 +327,7 @@ Deno.serve(async (req) => {
     const result: any = await pluggySync(link, from);
     if (result.error) return json({ error: result.error }, 400);
     await supa.from('bank_link').update({ last_sync: new Date().toISOString() }).eq('user_id', uid);
-    return json({ ok: true, items: result.items, tx: result.tx, cards: result.cards, invest: result.invest || [], contas: result.contas || [], avisos: result.avisos || [] });
+    return json({ ok: true, items: result.items, tx: result.tx, cards: result.cards, invest: result.invest || [], contas: result.contas || [], invmov: result.invmov || [], avisos: result.avisos || [] });
   } catch (_e) {
     return json({ error: 'internal' }, 500);
   }
