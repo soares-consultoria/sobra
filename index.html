@@ -959,9 +959,15 @@ function renderHome(){
           const usoPct = temLim? Math.min(100, Math.round((+c.divida||0)/+c.limite*100)) : 0;
           const barra = temLim? `<div class="bc-bar"><i style="width:${usoPct}%"></i></div>
             <div class="bc-sub">limite usado: <b>${fmt0(c.divida||0)}</b> de ${fmt0(c.limite)} (${usoPct}%) · disponível ${fmt0(c.disponivel||0)}</div>` : '';
+          /* fatura fechada de mês anterior normalmente já foi paga — o destaque vai
+             para o que está em uso no cartão agora, e a fatura antiga vira nota */
+          const big = c.fechada? (c.divida||0) : c.fatura;
+          const lbl = c.fechada? 'em uso no cartão agora — o banco ainda não publicou a fatura atual' : 'fatura em aberto (parcial) — compras do ciclo até hoje';
+          const nota = c.fechada? `<div class="bc-sub" style="margin-top:4px">última fatura fechada: <b>${fmt0(c.fatura)}</b> — ${vence||'sem data'}</div>` : '';
           return `<div class="bankcard">
-            <div class="bc-top"><span class="bc-name">💳 ${esc(c.nome)}</span><span class="bc-due">${vence} · <a href="#" data-cardhide="${esc(c.nome)}" style="color:var(--muted); text-decoration:underline">ocultar</a></span></div>
-            <div class="bc-val">${fmt0(c.fatura)}<span class="bc-lbl">${c.fechada?'última fatura fechada — o banco ainda não publicou a atual':'fatura em aberto (parcial) — compras do ciclo até hoje'}</span></div>
+            <div class="bc-top"><span class="bc-name">💳 ${esc(c.nome)}</span><span class="bc-due">${c.fechada?'':vence+' · '}<a href="#" data-cardhide="${esc(c.nome)}" style="color:var(--muted); text-decoration:underline">ocultar</a></span></div>
+            <div class="bc-val">${fmt0(big)}<span class="bc-lbl">${lbl}</span></div>
+            ${nota}
             ${barra}
           </div>`;
         }).join('')+'</div>'+

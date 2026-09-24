@@ -147,12 +147,15 @@ async function pluggySync(link: any, from: string) {
       const fromAcc = isCard && d40 < from ? d40 : from;
       const cardRaw: any[] = [];
       let nAcc = 0, dMin = '', dMax = '';
-      let page = 1, totalPages = 1;
-      while (page <= totalPages && page <= 10) {
-        const t = await pget(`transactions?accountId=${encodeURIComponent(a.id)}&from=${fromAcc}&pageSize=500&page=${page}`, apiKey);
+      // GET /v2/transactions com paginação por cursor (o /transactions antigo foi
+      // desativado pela Pluggy e passou a responder 410)
+      let cursorQ: string | null = null;
+      let page = 1;
+      while (page <= 10) {
+        const q = cursorQ !== null ? cursorQ : `accountId=${encodeURIComponent(a.id)}&dateFrom=${fromAcc}`;
+        const t = await pget('v2/transactions?' + q, apiKey);
         await sleep(400);
         if (!t) break;
-        totalPages = t.totalPages || 1;
         for (const x of t.results || []) {
           const date = String(x.date || '').slice(0, 10);
           if (!x.id || !date) continue;
@@ -173,6 +176,10 @@ async function pluggySync(link: any, from: string) {
           if (!dMax || date > dMax) dMax = date;
         }
         page++;
+        // o campo "next" traz a query pronta da próxima página; null = acabou
+        const nx = t.next;
+        if (!nx) break;
+        cursorQ = String(nx).replace(/^.*\?/, '');
       }
       console.log('[acct]', label, JSON.stringify({ tipo: a.type, sub: a.subtype, n: nAcc, de: dMin, ate: dMax, from: fromAcc }));
       if (isCard) {
