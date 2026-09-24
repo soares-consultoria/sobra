@@ -66,7 +66,11 @@ async function pget(path: string, apiKey: string): Promise<any | null> {
   for (let i = 0; i < 3; i++) {
     const r = await fetch('https://api.pluggy.ai/' + path, { headers: { 'X-API-KEY': apiKey } });
     if (r.status === 429) { await sleep(1200); continue; } // rate limit: espera e repete
-    if (!r.ok) return null;
+    if (!r.ok) {
+      // diagnóstico: qual endpoint falhou e com que código (sem expor ids)
+      console.log('[pget-err]', path.split('?')[0], r.status, (await r.text().catch(() => '')).slice(0, 180));
+      return null;
+    }
     return r.json();
   }
   return null;
